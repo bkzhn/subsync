@@ -166,6 +166,40 @@ The handler is called only for the video / audio reference path (the dominant
 cost of a sync). Exceptions it raises are logged and swallowed, so a buggy
 handler can never abort syncing.
 
+Character Encoding
+------------------
+Subtitle files in the wild come in a mess of legacy encodings (Windows-1251 for
+Cyrillic, GBK / Big5 for Chinese, Latin-1, Shift-JIS, UTF-16 with a BOM, ...).
+Robustly handling these is something `ffsubsync` does well compared to other
+subtitle sync tools, and it happens automatically: `--encoding` defaults to
+`infer`, which reads the input as raw bytes and auto-detects the encoding. Under
+the hood it tries up to three detectors in order and takes the first that
+answers — `cchardet`, then
+[charset_normalizer](https://pypi.org/project/charset-normalizer/), then
+[chardet](https://pypi.org/project/chardet/) — and decodes with
+`errors="replace"` so a slightly-off guess degrades gracefully instead of
+crashing. BOMs are handled for free (the raw bytes are what the detector sees).
+
+If auto-detection guesses wrong, force it with e.g. `--encoding windows-1251`.
+Output is written as UTF-8 by default; pass `--output-encoding same` to preserve
+the input's encoding instead, or name any codec explicitly. When the reference is
+itself a subtitle file, `--reference-encoding` controls it (also `infer` by
+default).
+
+One cross-version caveat worth knowing: the fastest / often most accurate
+detector, `cchardet`, is supplied by the maintained
+[faust-cchardet](https://pypi.org/project/faust-cchardet/) fork (which replaced
+the unmaintained original `cchardet` and installs under the module name
+`cchardet`). It is only declared as a dependency for **Python &lt; 3.13**
+(`faust-cchardet;python_version<'3.13'` in `requirements.txt`). On **Python
+3.13+** it isn't installed, so `import cchardet` fails quietly and detection falls
+back to the pure-Python `charset_normalizer` and `chardet`. This is usually
+indistinguishable in practice, but on an ambiguous legacy encoding the guess can
+differ — in which case just pass `--encoding` explicitly, or run under Python 3.12
+or earlier where the C detector is available. See the
+[encoding docs](https://ffsubsync.readthedocs.io/en/latest/encoding.html) for the
+full story.
+
 Sync Issues
 -----------
 If the sync fails, the following recourses are available:
