@@ -27,6 +27,7 @@ from ffsubsync.constants import (
     DEFAULT_MIN_SCORE,
     DEFAULT_QUALITY_MAX_OFFSET_SECONDS,
     DEFAULT_MAX_FRAMERATE_DEVIATION,
+    VAD_CHOICES,
     is_remote_url,
 )
 from ffsubsync.ffmpeg_utils import ffmpeg_bin_path
@@ -36,6 +37,7 @@ from ffsubsync.speech_transformers import (
     MultiSegmentVideoSpeechTransformer,
     DeserializeSpeechTransformer,
     PGSSpeechTransformer,
+    WhisperSpeechTransformer,
     ProgressInfo,
     make_subtitle_speech_pipeline,
 )
@@ -324,6 +326,30 @@ def make_reference_pipe(
                 ),
             ]
         )
+    if getattr(args, "whisper_weights", None) is not None:
+        # transcribe the reference audio with ffmpeg's whisper filter and use the
+        # transcript timings as the sync reference (an alternative to audio VAD)
+        return Pipeline(
+            [
+                (
+                    "speech_extract",
+                    WhisperSpeechTransformer(
+                        model_path=args.whisper_weights,
+                        language=args.language,
+                        whisper_args=getattr(args, "whisper_args", None),
+                        vad=args.vad,  # reused as whisper's optional VAD-model path
+                        sample_rate=SAMPLE_RATE,
+                        start_seconds=args.start_seconds,
+                        max_duration_seconds=getattr(
+                            args, "max_duration_seconds", None
+                        ),
+                        ffmpeg_path=args.ffmpeg_path,
+                        ref_stream=args.reference_stream,
+                        gui_mode=args.gui_mode,
+                    ),
+                ),
+            ]
+        )
     ref_format = _ref_format(args.reference)
     if ref_format in SUBTITLE_EXTENSIONS:
         if args.vad is not None:
@@ -477,6 +503,15 @@ def _detect_srtin_from_reference(reference: str) -> List[str]:
 def validate_args(args: argparse.Namespace) -> None:
     if args.vlc_mode:
         logger.setLevel(logging.CRITICAL)
+    # --vad no longer uses argparse `choices` (in whisper mode it carries a model
+    # path), so enforce the named-detector choices here when not in whisper mode.
+    if getattr(args, "whisper_weights", None) is None and args.vad is not None:
+        if args.vad not in VAD_CHOICES:
+            raise ValueError(
+                "invalid --vad {!r}; choose one of: {}".format(
+                    args.vad, ", ".join(VAD_CHOICES)
+                )
+            )
     if args.reference is None:
         if args.apply_offset_seconds == 0 or not args.srtin:
             raise ValueError(
@@ -955,23 +990,45 @@ def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--vad",
-        choices=[
-            "subs_then_webrtc",
-            "webrtc",
-            "subs_then_auditok",
-            "auditok",
-            "subs_then_silero",
-            "silero",
-            "fused",
-            "fused:weighted",
-            "fused:intersection",
-            "fused:union",
-        ],
+        # NB: no argparse `choices=` -- validated in validate_args instead, because
+        # in --whisper-weights transcription mode --vad is reused to carry a path
+        # to whisper's optional ggml VAD model rather than a named detector.
         default=None,
         help="Which voice activity detector to use for speech extraction "
-        "(if using video / audio as a reference, default={}). The `fused` "
-        "options combine webrtc and silero and require the optional silero "
-        "dependency (torch).".format(DEFAULT_VAD),
+        "(if using video / audio as a reference, default={default}). Choices: "
+        "{choices}. The `fused` options combine webrtc and silero and require the "
+        "optional silero dependency (torch). With --whisper-weights this instead "
+        "takes a path to a ggml VAD model for whisper's optional audio "
+        "fragmentation.".format(
+            default=DEFAULT_VAD, choices=", ".join(VAD_CHOICES)
+        ),
+    )
+    parser.add_argument(
+        "--whisper-weights",
+        "--whisper-model",
+        "--ffmpeg-transcription-model-weights",
+        default=None,
+        help="Path to a whisper.cpp ggml model file (e.g. ggml-base.en.bin). If "
+        "given, the reference audio is transcribed with ffmpeg's whisper filter "
+        "and the transcript is used as the sync reference instead of audio VAD "
+        "(requires ffmpeg >= 8.0 built with --enable-whisper). '~' is expanded "
+        "for you. Example: `ffs video.mp4 -i in.srt -o out.srt "
+        "--whisper-weights ~/whisper.cpp/models/ggml-base.en.bin`.",
+    )
+    parser.add_argument(
+        "--language",
+        default=None,
+        help="Language code for --whisper-weights transcription (e.g. en, es, "
+        "fr), or 'auto' to let whisper detect it. Default: inferred as 'en' for "
+        "*.en model files, else 'auto'. Only used with --whisper-weights.",
+    )
+    parser.add_argument(
+        "--whisper-args",
+        default=None,
+        help="Extra options for ffmpeg's whisper filter as key=value pairs "
+        "separated by ':' (e.g. `queue=12`), overriding ffsubsync's defaults. "
+        "The model, format, and destination are managed by ffsubsync and cannot "
+        "be overridden. Only used with --whisper-weights.",
     )
     parser.add_argument(
         "--no-fix-framerate",

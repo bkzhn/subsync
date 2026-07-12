@@ -70,6 +70,49 @@ specifier (the leading ``0:`` is optional):
 
    $ ffs ref.mkv -i in.srt -o out.srt --pgs-ref-stream s:2
 
+Whisper transcription (``--whisper-weights``)
+---------------------------------------------
+
+When a video has **no subtitles at all** — not embedded text, not PGS — the only
+reference is the audio. Instead of a plain VAD, recent ffmpeg builds (>= 8.0,
+compiled with ``--enable-whisper``) can transcribe the audio with
+`whisper.cpp <https://github.com/ggml-org/whisper.cpp>`_ in a single pass.
+ffsubsync uses that transcript's cue timings as the reference signal — often a
+sharper speech/silence signal than energy-based VAD, at the cost of running a
+speech-recognition model.
+
+Point ``--whisper-weights`` at a whisper.cpp ggml model file:
+
+.. code-block:: console
+
+   $ ffs video.mp4 -i in.srt -o out.srt \
+       --whisper-weights ~/whisper.cpp/models/ggml-base.en.bin
+
+ffsubsync smooths over ffmpeg's rough edges here:
+
+- **``~`` is expanded** for the model path (ffmpeg itself won't do this).
+- **The language is inferred**: an English-only model (named ``*.en.bin``) uses
+  ``en``; otherwise whisper auto-detects. Override with ``--language`` (e.g.
+  ``--language es``, or ``--language auto`` to force detection). You don't need
+  to remember ffmpeg's filter-string syntax.
+- **A warning is shown** if the reference already contains embedded subtitle
+  streams, since those are usually a better (and much cheaper) reference — see
+  ``subs_then_*`` above.
+- **Clear errors** are raised if the weights file is missing or if your ffmpeg
+  was not built with the whisper filter.
+
+To tune the underlying ffmpeg whisper filter, pass extra ``key=value`` options
+with ``--whisper-args`` (for example ``--whisper-args queue=12`` to enlarge the
+audio window — larger values give more accurate timings but use more CPU). The
+``model``, ``format``, and ``destination`` options are managed by ffsubsync and
+cannot be overridden.
+
+whisper's filter also supports an optional VAD model that fragments the audio
+before transcription. To enable it, **reuse the** ``--vad`` **flag** with a path
+to a ggml VAD model (e.g. ``--vad ~/whisper.cpp/models/ggml-silero-v5.1.2.bin``);
+in transcription mode the named VAD detectors do not apply, so ``--vad`` carries
+that path instead.
+
 Serialized speech (``.npy`` / ``.npz``)
 ---------------------------------------
 

@@ -76,5 +76,11 @@ def test_cli_accepts_fused_choices(vad):
 
 
 def test_cli_rejects_invalid_fused_choice():
-    with pytest.raises(SystemExit):
-        make_parser().parse_args(["movie.mkv", "--vad", "fused:bogus"])
+    # --vad no longer uses argparse `choices` (in whisper mode it carries a model
+    # path), so an invalid named choice is rejected by validate_args instead of
+    # argparse at parse time.
+    from ffsubsync.ffsubsync import validate_args
+
+    args = make_parser().parse_args(["movie.mkv", "--vad", "fused:bogus"])
+    with pytest.raises(ValueError, match="invalid --vad"):
+        validate_args(args)

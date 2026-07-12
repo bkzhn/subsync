@@ -224,6 +224,14 @@ If the sync fails, the following recourses are available:
   default). These options require the optional silero dependency, which itself
   requires PyTorch; install both with `pip install ffsubsync[torch]` (or just
   `pip install torch`). torch is not installed with `ffsubsync` by default.
+- For a video with no subtitles to borrow from, try transcribing the audio with
+  [whisper.cpp](https://github.com/ggml-org/whisper.cpp) and using the transcript
+  as the reference: `--whisper-weights ~/whisper.cpp/models/ggml-base.en.bin`.
+  This needs an `ffmpeg` (>= 8.0) built with `--enable-whisper`. `ffsubsync`
+  expands `~` in the path, infers the language (English for `*.en.bin` models,
+  else auto-detect; override with `--language`), and warns if the video already
+  has embedded subtitles. Extra whisper filter options can be passed via
+  `--whisper-args` (e.g. `--whisper-args queue=12`).
 
 When syncing in bulk, a bad sync can be worse than none. Passing
 `--skip-sync-on-low-quality` leaves the subtitles unmodified when the alignment

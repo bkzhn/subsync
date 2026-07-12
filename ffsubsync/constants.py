@@ -18,6 +18,33 @@ DEFAULT_VAD: str = "subs_then_webrtc"
 DEFAULT_MAX_OFFSET_SECONDS: int = 60
 DEFAULT_APPLY_OFFSET_SECONDS: int = 0
 
+# The named voice activity detectors accepted by --vad. Kept here (rather than
+# inline in the argparse `choices=`) so the CLI help text and the manual
+# validation in validate_args share a single source of truth -- necessary
+# because --vad no longer uses argparse `choices` (in whisper-transcription mode
+# it may instead carry a path to a VAD model; see WhisperSpeechTransformer).
+VAD_CHOICES: Tuple[str, ...] = (
+    "subs_then_webrtc",
+    "webrtc",
+    "subs_then_auditok",
+    "auditok",
+    "subs_then_silero",
+    "silero",
+    "fused",
+    "fused:weighted",
+    "fused:intersection",
+    "fused:union",
+)
+
+# ffmpeg's whisper audio filter (a reference source alternative to audio VAD;
+# see WhisperSpeechTransformer). "auto" lets whisper detect the language; the
+# queue default is bumped above ffmpeg's own 3s since larger windows give more
+# accurate cue timings (what we actually align against) at the cost of CPU.
+DEFAULT_WHISPER_LANGUAGE: str = "auto"
+DEFAULT_WHISPER_QUEUE: int = 8
+# internal vad-mode token used when transcription is selected via --whisper-weights
+WHISPER_VAD: str = "whisper"
+
 # Quality gating (--skip-sync-on-low-quality). The score's sign is meaningful even
 # though its magnitude is not, so 0.0 rejects only anti-correlated alignments. The
 # framerate-deviation default clears every real correction (discrete ratios reach
