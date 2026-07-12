@@ -18,6 +18,7 @@ from ffsubsync.constants import (
     DEFAULT_MAX_OFFSET_SECONDS,
     DEFAULT_MAX_SUBTITLE_SECONDS,
     DEFAULT_NON_SPEECH_LABEL,
+    DEFAULT_SPLIT_PENALTY,
     DEFAULT_START_SECONDS,
     DEFAULT_VAD,
     DEFAULT_ENCODING,
@@ -41,8 +42,13 @@ from ffsubsync.speech_transformers import (
     ProgressInfo,
     make_subtitle_speech_pipeline,
 )
+from ffsubsync.split_aligner import compute_split_offsets
 from ffsubsync.subtitle_parser import make_subtitle_parser
-from ffsubsync.subtitle_transformers import SubtitleMerger, SubtitleShifter
+from ffsubsync.subtitle_transformers import (
+    SubtitleMerger,
+    SubtitleShifter,
+    VariableSubtitleShifter,
+)
 from ffsubsync.version import get_version
 
 
@@ -224,15 +230,17 @@ def try_sync(
                 )
                 logger.info("...done")
             logger.info("computing alignments...")
+            reference_speech = None
             if skip_sync:
                 best_score = 0.0
                 best_srt_pipe = cast(Pipeline, srt_pipes[0])
                 offset_samples = 0
             else:
+                reference_speech = reference_pipe.transform(args.reference)
                 (best_score, offset_samples), best_srt_pipe = MaxScoreAligner(
                     FFTAligner, srtin, SAMPLE_RATE, args.max_offset_seconds
                 ).fit_transform(
-                    reference_pipe.transform(args.reference),
+                    reference_speech,
                     srt_pipes,
                 )
             if best_score < 0:
@@ -271,9 +279,33 @@ def try_sync(
                 )
                 out_subs.write_file(srtout)
                 continue
-            output_steps: List[Tuple[str, TransformerMixin]] = [
-                ("shift", SubtitleShifter(offset_seconds))
-            ]
+            split_penalty = getattr(args, "split_penalty", None)
+            use_split = (
+                split_penalty is not None
+                and not skip_sync
+                and reference_speech is not None
+            )
+            if use_split:
+                offsets_samples = compute_split_offsets(
+                    reference_speech,
+                    list(scale_step.subs_),
+                    sample_rate=SAMPLE_RATE,
+                    start_seconds=args.start_seconds,
+                    split_penalty=split_penalty * SAMPLE_RATE,
+                    max_offset_samples=abs(
+                        int(args.max_offset_seconds * SAMPLE_RATE)
+                    ),
+                )
+                offsets_seconds = [
+                    off / float(SAMPLE_RATE) + args.apply_offset_seconds
+                    for off in offsets_samples
+                ]
+                shift_step: TransformerMixin = VariableSubtitleShifter(offsets_seconds)
+                if offsets_seconds:
+                    offset_seconds = float(np.median(offsets_seconds))
+            else:
+                shift_step = SubtitleShifter(offset_seconds)
+            output_steps: List[Tuple[str, TransformerMixin]] = [("shift", shift_step)]
             if args.merge_with_reference:
                 output_steps.append(
                     ("merge", SubtitleMerger(reference_pipe.named_steps["parse"].subs_))
@@ -872,6 +904,22 @@ def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
         default=DEFAULT_MAX_OFFSET_SECONDS,
         help="The max allowed offset seconds for any subtitle segment "
         "(default=%d seconds)." % DEFAULT_MAX_OFFSET_SECONDS,
+    )
+    parser.add_argument(
+        "--split-penalty",
+        type=float,
+        nargs="?",
+        const=DEFAULT_SPLIT_PENALTY,
+        default=None,
+        help="Enable alass-style piecewise synchronization: instead of a single "
+        "global offset, allow the offset to change across the timeline to correct "
+        "commercial breaks, inserted/removed scenes (director's cuts), or discs "
+        "concatenated into one file. An optional value is the cost (in seconds of "
+        "overlap) of introducing each such split -- lower splits more eagerly, "
+        "higher stays closer to a single global offset; values around 4-20 are "
+        "typical. Pass the flag with no value to use a reasonable default "
+        "(%.0f). If the flag is omitted entirely (the default), a single global "
+        "offset is used as before." % DEFAULT_SPLIT_PENALTY,
     )
     parser.add_argument(
         "--max-duration-seconds",

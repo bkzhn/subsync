@@ -18,6 +18,13 @@ DEFAULT_VAD: str = "subs_then_webrtc"
 DEFAULT_MAX_OFFSET_SECONDS: int = 60
 DEFAULT_APPLY_OFFSET_SECONDS: int = 0
 
+# Penalty applied by the alass-style piecewise aligner (--split-penalty) when the
+# flag is given without an explicit value. Expressed in seconds-of-overlap: a split
+# is only introduced if it increases total speech overlap by more than this many
+# seconds, which suppresses spurious per-cue splits while still admitting genuine
+# structural breaks (ad breaks / scene cuts) that misalign everything after them.
+DEFAULT_SPLIT_PENALTY: float = 5.0
+
 # The named voice activity detectors accepted by --vad. Kept here (rather than
 # inline in the argparse `choices=`) so the CLI help text and the manual
 # validation in validate_args share a single source of truth -- necessary
