@@ -1,4 +1,4 @@
-name: build-site
+name: Build Website
 
 # Builds and deploys the browser/WASM ffsubsync site to GitHub Pages
 # (https://smacke.github.io/ffsubsync). build-wheels cross-compiles the webrtcvad
@@ -11,11 +11,6 @@ name: build-site
 # so this file must be on master to trigger it there.)
 
 on:
-  push:
-    branches: [master, web-wasm]
-    paths: ["web/**", ".github/workflows/build-site.yml", "ffsubsync/**"]
-  pull_request:
-    paths: ["web/**", ".github/workflows/build-site.yml", "ffsubsync/**"]
   workflow_dispatch:
 
 permissions:
