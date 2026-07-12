@@ -10,12 +10,14 @@ PYODIDE_VERSION := $(shell python3 -c "import json;print(json.load(open('build.c
 # newest nvm-installed node so `make` works outside an nvm-initialized shell.
 NODE ?= $(shell command -v node 2>/dev/null || ls $(HOME)/.nvm/versions/node/*/bin/node 2>/dev/null | sort -V | tail -1)
 
-# Pure-Python deps the native correctness test needs (mirror build.config.json +
-# the transitive libs ffsubsync imports at module load time).
+# Deps the native correctness tests need (mirror build.config.json + the
+# transitive libs ffsubsync imports at load time). webrtcvad-wheels is the native
+# stand-in for the browser's wasm webrtcvad wheel.
 TEST_DEPS := --with numpy --with pysubs2 --with srt --with ffmpeg-python \
-             --with auditok --with charset-normalizer --with rich --with tqdm
+             --with auditok --with webrtcvad-wheels --with charset-normalizer \
+             --with rich --with tqdm
 
-.PHONY: help vendor site serve test test-browser clean \
+.PHONY: help vendor site serve test test-audio test-browser clean \
         emsdk wheels webrtcvad-wheel cchardet-wheel
 
 help:
@@ -23,7 +25,8 @@ help:
 	@echo "  make vendor         bundle local ffsubsync + bridge -> vendor/py_sources.json"
 	@echo "  make site           assemble deployable static bundle -> dist/site"
 	@echo "  make serve          serve dist/site at http://localhost:8000"
-	@echo "  make test           native correctness test (uv, no browser needed)"
+	@echo "  make test           native correctness test: sub-vs-sub (uv, no browser)"
+	@echo "  make test-audio     native correctness test: audio path VAD->align (uv)"
 	@echo "  make test-browser   headless Pyodide sync test (Playwright; needs network)"
 	@echo "  make clean          remove dist/ and generated vendor bundle"
 	@echo "  --- Phase 2 (video/audio) ---"
@@ -53,6 +56,10 @@ serve: site
 test:
 	cd "$(REPO_ROOT)" && uv run $(TEST_DEPS) python web/tests/native_bridge_test.py
 
+# Native gate for the Phase 2 audio path (PCM -> real VAD -> align).
+test-audio:
+	cd "$(REPO_ROOT)" && uv run $(TEST_DEPS) python web/tests/native_audio_test.py
+
 # Full browser path (loads Pyodide from CDN, installs wheels from PyPI). Requires
 # network and Playwright; intended for CI. Falls back with a clear message.
 test-browser: site
@@ -61,7 +68,16 @@ test-browser: site
 clean:
 	rm -rf "$(WEB_DIR)/dist" "$(WEB_DIR)/vendor/py_sources.json"
 
-# --- Phase 2 placeholders (video/audio reference) ---------------------------
-emsdk webrtcvad-wheel cchardet-wheel wheels:
-	@echo "Phase 2 target '$@' not implemented yet (see the plan's WebRTC VAD wheel section)."
+# --- Phase 2: video/audio reference wasm wheels ------------------------------
+# Build the webrtcvad wasm wheel (exact CLI-parity VAD). Needs network + a POSIX
+# toolchain; intended for CI. The site works without it (auditok fallback).
+wheels webrtcvad-wheel:
+	bash scripts/build_wheels.sh
+
+# emsdk setup is handled inside build_wheels.sh (matched to the pinned Pyodide).
+emsdk:
+	@echo "emsdk is installed on demand by 'make wheels' (see scripts/build_wheels.sh)."
+
+cchardet-wheel:
+	@echo "Phase 3 optional target (see the plan's encoding-detection wheel section)."
 	@exit 1

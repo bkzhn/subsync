@@ -1,8 +1,10 @@
 // UI glue: wires the file inputs + options to the Pyodide worker and renders
-// the synced result. No data leaves the browser — everything runs in the worker.
+// the synced result. No data leaves the browser — everything runs in the worker
+// (Pyodide for alignment, ffmpeg.wasm for audio decoding).
 
 const els = {
   ref: document.getElementById("ref-file"),
+  refLabel: document.getElementById("ref-label"),
   input: document.getElementById("input-file"),
   noFixFramerate: document.getElementById("no-fix-framerate"),
   gss: document.getElementById("gss"),
@@ -13,12 +15,16 @@ const els = {
   download: document.getElementById("download"),
 };
 
+const SUBTITLE_ACCEPT = ".srt,.ass,.ssa,.ttml,.vtt,.sub";
+const VIDEO_ACCEPT = "video/*,audio/*,.mkv,.mp4,.avi,.mov,.webm,.m4v,.mka,.mp3,.aac,.flac,.wav,.ogg";
+
 const configUrl = new URL("./build.config.json", document.baseURI).href;
 const worker = new Worker(new URL("./src/worker.js", document.baseURI), {
   type: "module",
 });
 
 let engineReady = false;
+let capabilities = { webrtcvad: false };
 
 worker.onmessage = (event) => {
   const msg = event.data || {};
@@ -26,6 +32,7 @@ worker.onmessage = (event) => {
     setStatus(msg.status);
   } else if (msg.type === "ready") {
     engineReady = true;
+    capabilities = msg.capabilities || capabilities;
     setStatus("Ready. Pick a reference and a subtitle file to sync.");
     refreshButton();
   } else if (msg.type === "result") {
@@ -43,7 +50,24 @@ worker.postMessage({ type: "init", configUrl });
 for (const input of [els.ref, els.input]) {
   input.addEventListener("change", refreshButton);
 }
+for (const radio of document.querySelectorAll('input[name="ref-type"]')) {
+  radio.addEventListener("change", onRefTypeChange);
+}
 els.syncBtn.addEventListener("click", onSync);
+
+function refType() {
+  return document.querySelector('input[name="ref-type"]:checked').value;
+}
+
+function onRefTypeChange() {
+  const isVideo = refType() === "video";
+  els.ref.accept = isVideo ? VIDEO_ACCEPT : SUBTITLE_ACCEPT;
+  els.refLabel.innerHTML = isVideo
+    ? 'Reference video / audio <span class="hint">— a correctly-timed movie or audio track</span>'
+    : 'Reference subtitles <span class="hint">— a correctly-timed .srt / .ass / .ssa</span>';
+  els.ref.value = "";
+  refreshButton();
+}
 
 function refreshButton() {
   els.syncBtn.disabled = !(engineReady && els.ref.files[0] && els.input.files[0]);
@@ -55,14 +79,6 @@ async function onSync() {
   if (!refFile || !inFile) return;
   setBusy(true);
   els.result.hidden = true;
-  setStatus("Reading files…");
-
-  const [refBuf, inBuf] = await Promise.all([
-    refFile.arrayBuffer(),
-    inFile.arrayBuffer(),
-  ]);
-  const refBytes = new Uint8Array(refBuf);
-  const inBytes = new Uint8Array(inBuf);
 
   const options = {
     output_encoding: "utf-8",
@@ -70,19 +86,38 @@ async function onSync() {
     gss: !!els.gss.checked,
   };
 
-  worker.postMessage(
-    {
-      type: "sync",
-      payload: {
-        refName: refFile.name,
-        inName: inFile.name,
-        refBytes,
-        inBytes,
-        options,
+  // The input subtitle is always small — read it into memory.
+  setStatus("Reading input subtitles…");
+  const inBytes = new Uint8Array(await inFile.arrayBuffer());
+
+  if (refType() === "video") {
+    // Do NOT read the (possibly huge) reference into memory: hand the File to the
+    // worker, where ffmpeg.wasm mounts it lazily via WORKERFS.
+    const vad = capabilities.webrtcvad ? "webrtc" : "auditok";
+    worker.postMessage(
+      {
+        type: "syncAudio",
+        payload: { refFile, inName: inFile.name, inBytes, vad, options },
       },
-    },
-    [refBytes.buffer, inBytes.buffer], // transfer, don't copy
-  );
+      [inBytes.buffer],
+    );
+  } else {
+    setStatus("Reading reference…");
+    const refBytes = new Uint8Array(await refFile.arrayBuffer());
+    worker.postMessage(
+      {
+        type: "sync",
+        payload: {
+          refName: refFile.name,
+          inName: inFile.name,
+          refBytes,
+          inBytes,
+          options,
+        },
+      },
+      [refBytes.buffer, inBytes.buffer],
+    );
+  }
 }
 
 function renderResult(result) {

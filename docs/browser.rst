@@ -13,24 +13,31 @@ How to use it
 
 #. Open https://smacke.github.io/ffsubsync. On first visit the page downloads the
    WebAssembly runtime (a few megabytes); afterwards it is cached.
-#. Choose a **reference subtitle** — a correctly-synced ``.srt`` (or ``.ass`` /
-   ``.ssa`` / etc.) in any language.
-#. Choose the **subtitles to sync** — the out-of-sync file you want to fix.
+#. Pick the **reference type** — a correctly-synced subtitle file, or a video / audio
+   file.
+#. Choose the **reference** (subtitle, or the movie / audio track) and the
+   **subtitles to sync** (the out-of-sync file you want to fix).
 #. Click **Sync subtitles**, then download the corrected file. The detected time
    offset (and framerate correction, if any) is shown alongside the result.
 
-This is the reference-subtitle workflow described in :doc:`reference_types`: it
-aligns two subtitle files by cross-correlating their speech patterns, which is
-pure numeric computation and needs neither ffmpeg nor audio extraction.
+Subtitle references align two subtitle files by cross-correlating their speech
+patterns — pure numeric computation, no audio needed. Video / audio references are
+decoded to audio in the browser with `ffmpeg.wasm <https://ffmpegwasm.netlify.app/>`_
+and run through a voice-activity detector, exactly as the command-line tool does.
 
-Current scope and roadmap
--------------------------
+Large video files
+-----------------
 
-The browser version currently supports **subtitle-vs-subtitle** syncing. Syncing
-directly against a **video or audio** reference in the browser is in progress: it
-requires decoding audio with `ffmpeg.wasm <https://ffmpegwasm.netlify.app/>`_ and a
-WebAssembly voice-activity detector. Until that lands, use the command-line tool
-(see :doc:`installation`) for video/audio references.
+Nothing is uploaded, and large references are **not** loaded whole into memory: the
+file is mounted into ffmpeg.wasm via WORKERFS, which reads it lazily as needed, so
+only the (downsampled) decoded audio occupies memory. Multi-gigabyte movies work.
+
+Voice-activity detection
+------------------------
+
+The default detector is WebRTC VAD — the same as the CLI default — compiled to
+WebAssembly. If that component is unavailable the site automatically falls back to the
+pure-Python ``auditok`` energy detector. See :ref:`vad-backends` for the difference.
 
 Everything the command-line tool does is still available locally; the browser build
 simply packages the same ffsubsync code to run without an install.

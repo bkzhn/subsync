@@ -89,8 +89,15 @@
       </p>
 
       <div class="card">
+        <div class="field">
+          <span class="field-label">Reference type</span>
+          <div class="options">
+            <label><input type="radio" name="ref-type" value="subtitle" checked /> Subtitle file</label>
+            <label><input type="radio" name="ref-type" value="video" /> Video / audio file</label>
+          </div>
+        </div>
         <label class="field">
-          <span class="field-label">Reference subtitles
+          <span class="field-label" id="ref-label">Reference subtitles
             <span class="hint">— a correctly-timed .srt / .ass / .ssa</span></span>
           <input type="file" id="ref-file" accept=".srt,.ass,.ssa,.ttml,.vtt,.sub" />
         </label>
@@ -114,8 +121,8 @@
       </div>
 
       <footer>
-        Powered by <code>ffsubsync</code> compiled to WebAssembly via Pyodide.
-        Video/audio reference support is coming (Phase 2).
+        Powered by <code>ffsubsync</code> compiled to WebAssembly via Pyodide,
+        with audio decoded in-browser by ffmpeg.wasm. Nothing is uploaded.
       </footer>
     </main>
     <script type="module" src="./src/main.js"></script>

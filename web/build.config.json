@@ -3,5 +3,18 @@
   "pyodideCdn": "https://cdn.jsdelivr.net/pyodide/v0.28.1/full/",
   "corePackages": ["numpy", "micropip", "charset-normalizer"],
   "pipPackages": ["pysubs2", "srt", "ffmpeg-python", "auditok"],
-  "pySourcesManifest": "vendor/py_sources.json"
+  "pySourcesManifest": "vendor/py_sources.json",
+  "wheelDir": "vendor/wheels/",
+  "wheelManifest": "vendor/wheels/manifest.json",
+  "pyWebrtcvadRef": "2.0.10",
+  "ffmpeg": {
+    "coreCdn": "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd/",
+    "ffmpegCdn": "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.15/dist/esm/ffmpeg.js",
+    "utilCdn": "https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.2/dist/esm/index.js",
+    "frameRate": 16000
+  },
+  "audioVad": {
+    "default": "webrtc",
+    "fallback": "auditok"
+  }
 }

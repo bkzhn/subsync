@@ -25,10 +25,9 @@ nothing to install. Your files never leave your machine (nothing is uploaded):
 
 ### 👉 https://smacke.github.io/ffsubsync
 
-The browser version currently syncs a subtitle file against a **correctly-synced
-reference subtitle** (the reference-subtitle mode described below). Syncing directly
-against a video or audio file in the browser is in progress. For that mode today — and
-for bulk or scripted use — install the command-line tool below.
+The browser version syncs against either a **correctly-synced reference subtitle** or a
+**video / audio file** — audio is decoded in-browser with ffmpeg.wasm (large files are read
+lazily, never uploaded). For bulk or scripted use, install the command-line tool below.
 
 Helping Development
 -------------------

@@ -1,6 +1,7 @@
 node_modules/
 dist/
 vendor/py_sources.json
+vendor/wheels/
 package-lock.json
 __pycache__/
 *.pyc

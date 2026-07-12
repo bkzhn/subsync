@@ -21,6 +21,27 @@ export async function bootEngine({ configUrl, onStatus } = {}) {
   // (only builds CLI args — we never invoke the binary on this path).
   await micropip.install(config.pipPackages);
 
+  // Optional: the webrtcvad wasm wheel (exact CLI-parity VAD for the audio path).
+  // Absent until built in CI; the app falls back to auditok when it's missing.
+  const capabilities = { webrtcvad: false };
+  if (config.wheelManifest) {
+    try {
+      const manifestUrl = new URL(config.wheelManifest, configUrl);
+      const wheels = await (await fetch(manifestUrl)).json();
+      for (const name of wheels || []) {
+        status(`installing ${name}…`);
+        await micropip.install(new URL(config.wheelDir + name, configUrl).href);
+      }
+      if ((wheels || []).length) {
+        capabilities.webrtcvad = pyodide.runPython(
+          "def _c():\n try:\n  import webrtcvad; return True\n except Exception:\n  return False\n_c()",
+        );
+      }
+    } catch (e) {
+      status("no webrtcvad wheel (using auditok fallback)");
+    }
+  }
+
   status("loading ffsubsync…");
   const sources = await (
     await fetch(new URL(config.pySourcesManifest, configUrl))
@@ -37,7 +58,7 @@ export async function bootEngine({ configUrl, onStatus } = {}) {
   pyodide.runPython("import ffsubsync_bridge");
 
   status("ready");
-  return { pyodide, config };
+  return { pyodide, config, capabilities };
 }
 
 export function syncWithEngine(engine, { refName, refBytes, inName, inBytes, options = {} }) {
@@ -54,6 +75,36 @@ export function syncWithEngine(engine, { refName, refBytes, inName, inBytes, opt
 import ffsubsync_bridge
 ffsubsync_bridge.sync_subtitles(
     _ref_name, _ref_bytes, _in_name, _in_bytes,
+    **dict(_opts),
+)
+`);
+    return proxy.toJs({ dict_converter: Object.fromEntries });
+  } finally {
+    if (proxy) proxy.destroy();
+    if (opts && opts.destroy) opts.destroy();
+  }
+}
+
+// Sync against decoded audio PCM (mono s16le at frameRate) from a video/audio
+// reference. `vad` is "webrtc" or "auditok".
+export function syncAudioWithEngine(
+  engine,
+  { pcm, frameRate, inName, inBytes, vad, options = {} },
+) {
+  const { pyodide } = engine;
+  const opts = pyodide.toPy(options);
+  pyodide.globals.set("_pcm", pcm);
+  pyodide.globals.set("_frame_rate", frameRate);
+  pyodide.globals.set("_in_name", inName);
+  pyodide.globals.set("_in_bytes", inBytes);
+  pyodide.globals.set("_vad", vad);
+  pyodide.globals.set("_opts", opts);
+  let proxy;
+  try {
+    proxy = pyodide.runPython(`
+import ffsubsync_bridge
+ffsubsync_bridge.sync_with_audio(
+    _pcm, _frame_rate, _in_name, _in_bytes, vad=_vad,
     **dict(_opts),
 )
 `);
