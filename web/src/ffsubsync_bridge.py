@@ -1,20 +1,30 @@
 """Browser bridge for ffsubsync.
 
-This module is loaded into the Pyodide runtime and exposes a small, JSON-friendly
-entry point that the JS worker calls. For now it only implements the
-subtitle-vs-subtitle sync path, which is pure numpy + subtitle parsing and needs
-no ffmpeg / VAD (see the plan's Phase 1).
+Loaded into the Pyodide runtime; exposes JSON-friendly entry points the JS worker
+calls. Two sync paths:
 
-The heavy lifting is delegated to the *real* ffsubsync code (vendored into the
-Pyodide filesystem), so browser results match the CLI. We drive it exactly the way
-the CLI does: build an argparse.Namespace via ffsubsync's own parser, then call
-``ffsubsync.ffsubsync.run``. Input/output files live in Pyodide's in-memory MEMFS.
+* ``sync_subtitles`` — subtitle-vs-subtitle (Phase 1). Pure numpy + subtitle
+  parsing; no ffmpeg / VAD.
+* ``sync_with_audio`` — video/audio reference (Phase 2). The browser decodes audio
+  to PCM with ffmpeg.wasm and hands us the raw samples; we run ffsubsync's own VAD
+  detector over them to build the reference speech signal, serialize it, and rejoin
+  the standard sync path.
+
+Both delegate the actual alignment to the *real*, vendored ffsubsync code so results
+match the CLI. Input/output files live in Pyodide's in-memory MEMFS.
 """
 
 import os
 import traceback
 
+import numpy as np
+
+from ffsubsync.constants import SAMPLE_RATE
 from ffsubsync.ffsubsync import make_parser, run
+from ffsubsync.speech_transformers import (
+    _make_auditok_detector,
+    _make_webrtcvad_detector,
+)
 
 _WORK_DIR = "/work"
 
@@ -45,42 +55,14 @@ def _write(name: str, data) -> str:
     return path
 
 
-def sync_subtitles(
-    ref_name: str,
-    ref_bytes: bytes,
-    in_name: str,
-    in_bytes: bytes,
-    *,
-    reference_encoding=None,
-    output_encoding: str = "utf-8",
-    no_fix_framerate: bool = False,
-    gss: bool = False,
-    max_offset_seconds=None,
-):
-    """Sync ``in_bytes`` against subtitle reference ``ref_bytes``.
+def _synced_name(in_name: str) -> str:
+    stem, _ext = os.path.splitext(os.path.basename(in_name))
+    return "{}.synced.srt".format(stem)
 
-    Both inputs are raw file bytes plus their original filenames (the extension
-    matters: ffsubsync picks the parser from it). Returns a plain dict that
-    survives the Pyodide->JS boundary:
 
-        {
-          "ok": bool,
-          "offset_seconds": float | None,
-          "framerate_scale_factor": float | None,
-          "output_name": str,
-          "output_text": str,          # synced subtitles (utf-8)
-          "error": str | None,
-        }
-    """
-    _ensure_workdir()
-    # Keep the caller's extensions so the format is detected correctly.
-    ref_path = _write("reference_" + os.path.basename(ref_name), ref_bytes)
-    in_path = _write("input_" + os.path.basename(in_name), in_bytes)
-    out_path = os.path.join(_WORK_DIR, "output.srt")
-
-    argv = [ref_path, "-i", in_path, "-o", out_path]
-    if reference_encoding:
-        argv += ["--reference-encoding", reference_encoding]
+def _common_argv(in_path, out_path, *, output_encoding, no_fix_framerate, gss,
+                 max_offset_seconds):
+    argv = ["-i", in_path, "-o", out_path]
     if output_encoding:
         argv += ["--output-encoding", output_encoding]
     if no_fix_framerate:
@@ -89,7 +71,11 @@ def sync_subtitles(
         argv += ["--gss"]
     if max_offset_seconds is not None:
         argv += ["--max-offset-seconds", str(max_offset_seconds)]
+    return argv
 
+
+def _run_and_collect(argv, out_path, in_name):
+    """Run ffsubsync with ``argv`` and package a JS-friendly result dict."""
     try:
         args = make_parser().parse_args(argv)
         result = run(args)
@@ -119,6 +105,120 @@ def sync_subtitles(
     }
 
 
-def _synced_name(in_name: str) -> str:
-    stem, _ext = os.path.splitext(os.path.basename(in_name))
-    return "{}.synced.srt".format(stem)
+def sync_subtitles(
+    ref_name: str,
+    ref_bytes,
+    in_name: str,
+    in_bytes,
+    *,
+    reference_encoding=None,
+    output_encoding: str = "utf-8",
+    no_fix_framerate: bool = False,
+    gss: bool = False,
+    max_offset_seconds=None,
+):
+    """Sync ``in_bytes`` against subtitle reference ``ref_bytes`` (Phase 1)."""
+    _ensure_workdir()
+    ref_path = _write("reference_" + os.path.basename(ref_name), ref_bytes)
+    in_path = _write("input_" + os.path.basename(in_name), in_bytes)
+    out_path = os.path.join(_WORK_DIR, "output.srt")
+
+    argv = [ref_path] + _common_argv(
+        in_path, out_path, output_encoding=output_encoding,
+        no_fix_framerate=no_fix_framerate, gss=gss,
+        max_offset_seconds=max_offset_seconds,
+    )
+    if reference_encoding:
+        argv += ["--reference-encoding", reference_encoding]
+    return _run_and_collect(argv, out_path, in_name)
+
+
+# ---- Phase 2: video/audio reference -----------------------------------------
+
+_DETECTOR_MAKERS = {
+    "webrtc": _make_webrtcvad_detector,
+    "auditok": _make_auditok_detector,
+}
+
+
+def _pcm_to_speech_signal(pcm: bytes, frame_rate: int, vad: str,
+                          non_speech_label: float) -> np.ndarray:
+    """Turn mono s16le PCM into ffsubsync's speech signal via the chosen VAD.
+
+    This mirrors ``VideoSpeechTransformer._fit_using_audio`` exactly, minus the
+    ffmpeg subprocess: the audio has already been decoded (by ffmpeg.wasm in the
+    browser), so we just chunk the bytes on the same window boundary and feed each
+    chunk to the same detector, then concatenate. ``frame_rate`` is the PCM sample
+    rate; for webrtcvad it must be one of 8000/16000/32000/48000 Hz.
+    """
+    maker = _DETECTOR_MAKERS.get(vad)
+    if maker is None:
+        raise ValueError(
+            "unsupported browser vad %r; expected one of %s"
+            % (vad, ", ".join(sorted(_DETECTOR_MAKERS)))
+        )
+    detector = maker(SAMPLE_RATE, frame_rate, non_speech_label)
+
+    bytes_per_frame = 2
+    frames_per_window = bytes_per_frame * frame_rate // SAMPLE_RATE
+    windows_per_buffer = 10000
+    step = frames_per_window * windows_per_buffer  # bytes per chunk (window-aligned)
+
+    parts = []
+    for start in range(0, len(pcm), step):
+        chunk = pcm[start:start + step]
+        if not chunk:
+            break
+        parts.append(detector(np.frombuffer(chunk, np.uint8)))
+    if not parts:
+        raise ValueError("no audio samples to analyze")
+    return np.concatenate(parts)
+
+
+def sync_with_audio(
+    ref_pcm,
+    frame_rate: int,
+    in_name: str,
+    in_bytes,
+    *,
+    vad: str = "webrtc",
+    non_speech_label: float = 0.0,
+    output_encoding: str = "utf-8",
+    no_fix_framerate: bool = False,
+    gss: bool = False,
+    max_offset_seconds=None,
+):
+    """Sync ``in_bytes`` against decoded audio PCM from a video/audio reference.
+
+    ``ref_pcm`` is mono signed-16-bit little-endian PCM decoded at ``frame_rate``
+    (the browser produces this with ffmpeg.wasm). We build the reference speech
+    signal with ``vad`` ("webrtc" or "auditok"), serialize it to an ``.npz``, and
+    hand that to the standard ffsubsync reference path (DeserializeSpeechTransformer).
+    """
+    _ensure_workdir()
+    try:
+        signal = _pcm_to_speech_signal(
+            _as_bytes(ref_pcm), int(frame_rate), vad, non_speech_label
+        )
+    except Exception:
+        return {
+            "ok": False,
+            "offset_seconds": None,
+            "framerate_scale_factor": None,
+            "output_name": _synced_name(in_name),
+            "output_text": "",
+            "error": traceback.format_exc(),
+        }
+
+    npz_path = os.path.join(_WORK_DIR, "reference.npz")
+    np.savez_compressed(npz_path, speech=signal)
+    in_path = _write("input_" + os.path.basename(in_name), in_bytes)
+    out_path = os.path.join(_WORK_DIR, "output.srt")
+
+    argv = [npz_path] + _common_argv(
+        in_path, out_path, output_encoding=output_encoding,
+        no_fix_framerate=no_fix_framerate, gss=gss,
+        max_offset_seconds=max_offset_seconds,
+    )
+    argv += ["--non-speech-label", str(non_speech_label)]
+    return _run_and_collect(argv, out_path, in_name)
