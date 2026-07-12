@@ -18,6 +18,18 @@ Turn this:                       |  Into this:
 :-------------------------------:|:-------------------------:
 ![](https://raw.githubusercontent.com/smacke/ffsubsync/master/resources/img/tearing-me-apart-wrong.gif)  |  ![](https://raw.githubusercontent.com/smacke/ffsubsync/master/resources/img/tearing-me-apart-correct.gif)
 
+Try it in your browser (no install)
+------------------------------------
+You can now sync subtitles entirely in your browser — no Python, no `ffmpeg`, and
+nothing to install. Your files never leave your machine (nothing is uploaded):
+
+### 👉 https://smacke.github.io/ffsubsync
+
+The browser version currently syncs a subtitle file against a **correctly-synced
+reference subtitle** (the reference-subtitle mode described below). Syncing directly
+against a video or audio file in the browser is in progress. For that mode today — and
+for bulk or scripted use — install the command-line tool below.
+
 Helping Development
 -------------------
 Please consider [supporting Ukraine](https://github.com/vshymanskyy/StandWithUkraine/blob/main/docs/README.md)

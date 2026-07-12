@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ffsubsync — sync subtitles in your browser</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --fg: #1a1a1a;
+        --muted: #6b7280;
+        --border: #d1d5db;
+        --accent: #2563eb;
+        --card: #f9fafb;
+        --error: #dc2626;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0f1115;
+          --fg: #e5e7eb;
+          --muted: #9ca3af;
+          --border: #374151;
+          --accent: #60a5fa;
+          --card: #171a21;
+          --error: #f87171;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font: 16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+        display: flex;
+        justify-content: center;
+        padding: 2rem 1rem;
+      }
+      main { width: 100%; max-width: 640px; }
+      h1 { font-size: 1.6rem; margin: 0 0 .25rem; }
+      .sub { color: var(--muted); margin: 0 0 1.5rem; }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 1.25rem;
+        margin-bottom: 1rem;
+      }
+      label.field { display: block; margin-bottom: 1rem; }
+      label.field:last-child { margin-bottom: 0; }
+      .field-label { font-weight: 600; display: block; margin-bottom: .35rem; }
+      .hint { color: var(--muted); font-size: .85rem; font-weight: 400; }
+      input[type="file"] { width: 100%; max-width: 100%; }
+      .options { display: flex; gap: 1.25rem; flex-wrap: wrap; margin-top: .25rem; }
+      .options label { display: flex; align-items: center; gap: .4rem; font-size: .9rem; }
+      button {
+        appearance: none;
+        border: 0;
+        border-radius: 8px;
+        background: var(--accent);
+        color: white;
+        font: inherit;
+        font-weight: 600;
+        padding: .65rem 1.1rem;
+        cursor: pointer;
+        width: 100%;
+      }
+      button:disabled { opacity: .5; cursor: not-allowed; }
+      #status { color: var(--muted); font-size: .9rem; margin-top: .75rem; min-height: 1.4em; }
+      #status.error { color: var(--error); white-space: pre-wrap; }
+      #result { margin-top: 1rem; }
+      #offset { font-variant-numeric: tabular-nums; font-weight: 600; }
+      a#download {
+        display: inline-block;
+        margin-top: .5rem;
+        color: var(--accent);
+        font-weight: 600;
+      }
+      footer { color: var(--muted); font-size: .8rem; margin-top: 2rem; text-align: center; }
+      code { background: color-mix(in srgb, var(--fg) 10%, transparent); padding: 0 .3em; border-radius: 4px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>ffsubsync <span class="hint">in the browser</span></h1>
+      <p class="sub">
+        Sync a subtitle file against a reference subtitle — entirely on your
+        machine. Nothing is uploaded.
+      </p>
+
+      <div class="card">
+        <label class="field">
+          <span class="field-label">Reference subtitles
+            <span class="hint">— a correctly-timed .srt / .ass / .ssa</span></span>
+          <input type="file" id="ref-file" accept=".srt,.ass,.ssa,.ttml,.vtt,.sub" />
+        </label>
+        <label class="field">
+          <span class="field-label">Subtitles to sync
+            <span class="hint">— the out-of-sync file to fix</span></span>
+          <input type="file" id="input-file" accept=".srt,.ass,.ssa,.ttml,.vtt,.sub" />
+        </label>
+        <div class="options">
+          <label><input type="checkbox" id="no-fix-framerate" /> Don't fix framerate</label>
+          <label><input type="checkbox" id="gss" /> Golden-section search</label>
+        </div>
+      </div>
+
+      <button id="sync-btn" disabled>Sync subtitles</button>
+      <div id="status"></div>
+
+      <div id="result" class="card" hidden>
+        <div><span id="offset"></span></div>
+        <a id="download" href="#">Download synced subtitles</a>
+      </div>
+
+      <footer>
+        Powered by <code>ffsubsync</code> compiled to WebAssembly via Pyodide.
+        Video/audio reference support is coming (Phase 2).
+      </footer>
+    </main>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,78 @@
+name: build-site
+
+# Builds and deploys the browser/WASM ffsubsync site to GitHub Pages
+# (https://smacke.github.io/ffsubsync). Phase 1: no wasm wheels yet — the
+# sub-vs-sub path needs only pure-Python deps. Phase 2 will add a `build-wheels`
+# job feeding a webrtcvad wasm wheel artifact into `build-site` (see the plan).
+#
+# To deploy on demand: Actions -> build-site -> "Run workflow" (workflow_dispatch),
+# targeting master. Pushes to master that touch web/ or ffsubsync/ also deploy.
+# (workflow_dispatch is only offered for workflows present on the default branch,
+# so this file must be on master to trigger it there.)
+
+on:
+  push:
+    branches: [master, web-wasm]
+    paths: ["web/**", ".github/workflows/build-site.yml", "ffsubsync/**"]
+  pull_request:
+    paths: ["web/**", ".github/workflows/build-site.yml", "ffsubsync/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: build-site-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Native correctness test (sub-vs-sub)
+        run: make -C web test
+
+  test-browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Playwright
+        working-directory: web
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+      - name: Headless browser sync test (full Pyodide path)
+        run: make -C web test-browser
+
+  build-site:
+    runs-on: ubuntu-latest
+    needs: [test-native]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Assemble static bundle
+        run: make -C web site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist/site
+
+  deploy:
+    # Deploy on a push to master, or any manual run (workflow_dispatch).
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    needs: [build-site, test-browser]
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -28,6 +28,10 @@ correction — that lines them up:
 
    $ ffs video.mp4 -i unsynchronized.srt -o synchronized.srt
 
+Prefer not to install anything? There is now a **browser version** that runs
+ffsubsync entirely client-side via WebAssembly — nothing is uploaded, and your
+files never leave your machine: https://smacke.github.io/ffsubsync. See :doc:`browser`.
+
 The rest of these docs walk from a five-minute quickstart through the more
 advanced knobs (reference types, voice-activity detectors, the bulk-sync quality
 gate) and include a deep dive on :doc:`character encoding <encoding>`, an area
@@ -41,6 +45,7 @@ specific flag? Jump to the :doc:`cli`.
    :caption: Contents:
 
    installation
+   browser
    usage
    reference_types
    advanced

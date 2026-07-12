@@ -1,0 +1,7 @@
+{
+  "pyodideVersion": "0.28.1",
+  "pyodideCdn": "https://cdn.jsdelivr.net/pyodide/v0.28.1/full/",
+  "corePackages": ["numpy", "micropip", "charset-normalizer"],
+  "pipPackages": ["pysubs2", "srt", "ffmpeg-python", "auditok"],
+  "pySourcesManifest": "vendor/py_sources.json"
+}

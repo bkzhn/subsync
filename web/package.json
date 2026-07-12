@@ -1,0 +1,14 @@
+{
+  "name": "ffsubsync-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser (WebAssembly/Pyodide) build of ffsubsync — sync subtitles with no backend.",
+  "scripts": {
+    "vendor": "node scripts/vendor.mjs",
+    "test:browser": "node tests/browser_sync.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.47.0"
+  }
+}
