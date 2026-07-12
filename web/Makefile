@@ -17,7 +17,7 @@ TEST_DEPS := --with numpy --with pysubs2 --with srt --with ffmpeg-python \
              --with auditok --with webrtcvad-wheels --with charset-normalizer \
              --with rich --with tqdm
 
-.PHONY: help vendor site serve test test-audio test-browser clean \
+.PHONY: help vendor vendor-pypi site serve test test-audio test-browser clean \
         emsdk wheels webrtcvad-wheel cchardet-wheel
 
 help:
@@ -32,8 +32,12 @@ help:
 	@echo "  --- Phase 2 (video/audio) ---"
 	@echo "  make wheels         build webrtcvad (and optional cchardet) Pyodide wasm wheels"
 
-vendor:
+vendor: vendor-pypi
 	$(NODE) scripts/vendor.mjs
+
+# Download the pure-Python PyPI deps as wheels so the runtime never needs PyPI.
+vendor-pypi:
+	bash scripts/vendor_pypi.sh
 
 site: vendor
 	rm -rf "$(DIST)"

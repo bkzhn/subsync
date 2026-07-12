@@ -12,38 +12,36 @@ export async function bootEngine({ configUrl, onStatus } = {}) {
   const { loadPyodide } = await import(config.pyodideCdn + "pyodide.mjs");
   const pyodide = await loadPyodide({ indexURL: config.pyodideCdn });
 
-  status("loading numpy…");
+  status("loading runtime packages…");
+  // corePackages (numpy, micropip, charset-normalizer, typing-extensions, tqdm,
+  // setuptools) come from the Pyodide CDN, not PyPI.
   await pyodide.loadPackage(config.corePackages);
 
-  status("installing subtitle libraries…");
-  const micropip = pyodide.pyimport("micropip");
-  // pysubs2 / srt / auditok are pure-Python; ffmpeg-python is pure-Python too
-  // (only builds CLI args — we never invoke the binary on this path).
-  await micropip.install(config.pipPackages);
-
-  // Optional: the webrtcvad wasm wheel (exact CLI-parity VAD for the audio path).
-  // Absent until built in CI; when missing/broken, video/audio sync is disabled.
+  // Install every vendored wheel from *our own origin* — never PyPI. This covers
+  // the pure-Python deps (pysubs2, ffmpeg-python + future) and, when built, the
+  // webrtcvad wasm wheel. deps=False guarantees micropip never contacts PyPI, so
+  // the site works even where PyPI is blocked.
+  status("installing libraries…");
   const capabilities = { webrtcvad: false, webrtcvadError: "" };
+  let wheels = [];
   if (config.wheelManifest) {
     try {
-      const manifestUrl = new URL(config.wheelManifest, configUrl);
-      const wheels = await (await fetch(manifestUrl)).json();
-      if ((wheels || []).length) {
-        // webrtcvad.py does `import pkg_resources` at import time, so it needs
-        // setuptools present. Best-effort; if it fails the import test below just
-        // reports webrtcvad unavailable.
-        try {
-          await micropip.install("setuptools");
-        } catch (_) {
-          /* ignore */
-        }
-      }
-      for (const name of wheels || []) {
-        status(`installing ${name}…`);
-        await micropip.install(new URL(config.wheelDir + name, configUrl).href);
-      }
-      if ((wheels || []).length) {
-        const probe = pyodide.runPython(`
+      wheels = (await (await fetch(new URL(config.wheelManifest, configUrl))).json()) || [];
+    } catch (_) {
+      wheels = [];
+    }
+  }
+  if (wheels.length) {
+    const urls = wheels.map((name) => new URL(config.wheelDir + name, configUrl).href);
+    const pyUrls = pyodide.toPy(urls);
+    pyodide.globals.set("_wheel_urls", pyUrls);
+    await pyodide.runPythonAsync(
+      "import micropip; await micropip.install(list(_wheel_urls), deps=False)",
+    );
+    if (pyUrls.destroy) pyUrls.destroy();
+    // webrtcvad (if bundled) — report whether it actually imports (needs setuptools
+    // for its pkg_resources import, which is in corePackages).
+    const probe = pyodide.runPython(`
 def _probe():
     try:
         import webrtcvad  # noqa: F401
@@ -53,19 +51,12 @@ def _probe():
         return (False, traceback.format_exc())
 _probe()
 `);
-        const [ok, err] = probe.toJs();
-        probe.destroy();
-        capabilities.webrtcvad = ok;
-        if (!ok) {
-          capabilities.webrtcvadError = err;
-          console.warn("webrtcvad wheel present but import failed:\n" + err);
-          status("webrtcvad import failed (video/audio disabled)");
-        }
-      }
-    } catch (e) {
-      capabilities.webrtcvadError = String((e && e.stack) || e);
-      console.warn("webrtcvad wheel install failed:", e);
-      status("webrtcvad install failed (video/audio disabled)");
+    const [ok, err] = probe.toJs();
+    probe.destroy();
+    capabilities.webrtcvad = ok;
+    if (!ok) {
+      capabilities.webrtcvadError = err;
+      console.warn("webrtcvad not available:\n" + err);
     }
   }
 

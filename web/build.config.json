@@ -1,8 +1,8 @@
 {
   "pyodideVersion": "0.28.1",
   "pyodideCdn": "https://cdn.jsdelivr.net/pyodide/v0.28.1/full/",
-  "corePackages": ["numpy", "micropip", "charset-normalizer", "typing-extensions", "tqdm"],
-  "pipPackages": ["pysubs2", "ffmpeg-python"],
+  "corePackages": ["numpy", "micropip", "charset-normalizer", "typing-extensions", "tqdm", "setuptools"],
+  "vendorPypi": ["pysubs2", "ffmpeg-python"],
   "pySourcesManifest": "vendor/py_sources.json",
   "wheelDir": "vendor/wheels/",
   "wheelManifest": "vendor/wheels/manifest.json",
