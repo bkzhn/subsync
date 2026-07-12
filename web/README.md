@@ -16,10 +16,12 @@ see [Build & run](#build--run) below.
   no VAD).
 - **Phase 2 — video/audio reference:** implemented. Audio is decoded in-browser by
   `ffmpeg.wasm` (large files mounted lazily via WORKERFS, never loaded whole into
-  memory), then a VAD builds the reference speech signal. The default VAD is `webrtcvad`
-  via a cross-compiled wasm wheel (built in CI); if the wheel is unavailable the site
-  falls back to the pure-Python `auditok` VAD automatically. The Python pipeline is
-  covered by native tests; the ffmpeg.wasm decode is exercised in a real browser via CI.
+  memory), then WebRTC VAD builds the reference speech signal. The VAD ships as a
+  cross-compiled `webrtcvad` wasm wheel (built in CI); when it is unavailable, video/
+  audio references are disabled and the UI says so (subtitle references still work).
+  ffsubsync's other VAD, `auditok`, is **not** bundled: it has no PyPI wheel and is
+  GPLv3, which would relicense this MIT site. The Python pipeline is covered by native
+  tests; the ffmpeg.wasm decode is exercised in a real browser via CI.
 
 ## How it works
 
@@ -66,8 +68,8 @@ ffmpeg core is kept single-threaded so Pages needs no COOP/COEP headers.
 Pyodide `wasm32` wheel (see `scripts/build_wheels.sh`) so the browser uses the same default
 VAD as the CLI. It needs network + a POSIX toolchain (emsdk is installed on demand), so it
 normally runs in CI; the built `.whl` lands in `vendor/wheels/` and is served with the site.
-When the wheel is absent, the site automatically uses the pure-Python `auditok` VAD instead.
-Version pins (Pyodide, py-webrtcvad, ffmpeg.wasm) all live in `build.config.json`.
+When the wheel is absent, video/audio references are disabled (subtitle references still
+work). Version pins (Pyodide, py-webrtcvad, ffmpeg.wasm) all live in `build.config.json`.
 
 ## Phase 3 (optional)
 

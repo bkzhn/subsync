@@ -3,8 +3,12 @@
 # vendored WebRTC VAD C source, so the browser can use the same default VAD as
 # the CLI. Output: web/vendor/wheels/webrtcvad-*-wasm32.whl
 #
-# This needs network + a POSIX toolchain and is intended for CI (or a local Linux/
-# macOS box). It is idempotent-ish: rerunning rebuilds into a clean temp dir.
+# This needs network + a POSIX toolchain and is intended for CI (Linux). It is
+# idempotent-ish: rerunning rebuilds into a clean temp dir.
+#
+# Requirements:
+#   * a Python 3.13 host interpreter (Pyodide 0.28.x's cross-build env requires it)
+#   * builds on Linux; macOS host SDK headers leak into emcc and break the build
 #
 # Pins are read from web/build.config.json (pyodideVersion, pyWebrtcvadRef).
 set -euo pipefail

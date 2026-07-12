@@ -91,9 +91,18 @@ async function onSync() {
   const inBytes = new Uint8Array(await inFile.arrayBuffer());
 
   if (refType() === "video") {
+    if (!capabilities.webrtcvad) {
+      setStatus(
+        "Video/audio sync needs the WebRTC VAD component, which isn't available " +
+          "in this build. Use a subtitle reference, or build the webrtcvad wheel.",
+        true,
+      );
+      setBusy(false);
+      return;
+    }
     // Do NOT read the (possibly huge) reference into memory: hand the File to the
     // worker, where ffmpeg.wasm mounts it lazily via WORKERFS.
-    const vad = capabilities.webrtcvad ? "webrtc" : "auditok";
+    const vad = "webrtc";
     worker.postMessage(
       {
         type: "syncAudio",

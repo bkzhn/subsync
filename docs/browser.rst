@@ -35,9 +35,10 @@ only the (downsampled) decoded audio occupies memory. Multi-gigabyte movies work
 Voice-activity detection
 ------------------------
 
-The default detector is WebRTC VAD — the same as the CLI default — compiled to
-WebAssembly. If that component is unavailable the site automatically falls back to the
-pure-Python ``auditok`` energy detector. See :ref:`vad-backends` for the difference.
+Video / audio references use WebRTC VAD — the same as the CLI default — compiled to
+WebAssembly. If that component is unavailable, video / audio references are disabled
+(subtitle references still work); use the command-line tool for those. See
+:ref:`vad-backends` for background on the detectors.
 
 Everything the command-line tool does is still available locally; the browser build
 simply packages the same ffsubsync code to run without an install.

@@ -81,14 +81,22 @@ async function main() {
   const browser = await chromium.launch();
   const page = await browser.newPage();
   page.on("console", (m) => console.log("[page]", m.text()));
+  page.on("pageerror", (e) => console.log("[pageerror]", e.message));
 
   let failed = false;
   try {
     await page.goto(`http://localhost:${PORT}/index.html`);
-    // Wait until the worker reports the engine is ready.
+    // Wait until the worker reports the engine is ready. Note Playwright's
+    // signature is waitForFunction(fn, arg, options) — options must be the 3rd
+    // arg (first boot installs several PyPI wheels, so allow generous time).
     await page.waitForFunction(
-      () => document.getElementById("status").textContent.includes("Ready"),
-      { timeout: 180000 },
+      () => {
+        const s = document.getElementById("status").textContent;
+        if (s.startsWith("Error")) throw new Error("engine error: " + s);
+        return s.includes("Ready");
+      },
+      null,
+      { timeout: 240000 },
     );
     await page.setInputFiles("#ref-file", refPath);
     await page.setInputFiles("#input-file", inPath);

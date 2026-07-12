@@ -46,7 +46,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          # Pyodide 0.28.x's cross-build env requires a 3.13 host interpreter.
+          python-version: "3.13"
       - name: Build webrtcvad wasm wheel
         run: make -C web wheels
       - uses: actions/upload-artifact@v4

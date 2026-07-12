@@ -12,6 +12,7 @@
 // Output: web/vendor/py_sources.json, web/vendor/wheels/manifest.json
 
 import { promises as fs } from "node:fs";
+import { execSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -39,6 +40,33 @@ async function main() {
 
   sources["ffsubsync_bridge.py"] = await fs.readFile(bridgeSrc, "utf8");
 
+  // ffsubsync's version is derived from git at runtime; there's no git in the
+  // browser, so versioneer yields "0+unknown" and get_version() falls into its
+  // frozen-binary branch (which reads a resource env var and crashes). Write the
+  // _frozen_version module the code looks for first, exactly as a CI freeze would.
+  let version = "0.0.0+browser";
+  try {
+    version = execSync("git describe --tags --always --dirty", { cwd: repoRoot })
+      .toString()
+      .trim();
+  } catch {
+    /* not a git checkout; keep the placeholder */
+  }
+  sources["ffsubsync/_frozen_version.py"] =
+    `FFSUBSYNC_VERSION = ${JSON.stringify(version)}\n`;
+
+  // Vendored pure-Python deps that have no PyPI wheel (micropip can only install
+  // wheels), bundled as top-level modules — e.g. srt.py. See vendor/pysrc/.
+  const pysrcDir = path.join(webDir, "vendor", "pysrc");
+  try {
+    for (const name of (await fs.readdir(pysrcDir)).sort()) {
+      if (!name.endsWith(".py")) continue;
+      sources[name] = await fs.readFile(path.join(pysrcDir, name), "utf8");
+    }
+  } catch {
+    /* no vendored pysrc */
+  }
+
   await fs.mkdir(outDir, { recursive: true });
   await fs.writeFile(outFile, JSON.stringify(sources));
   const count = Object.keys(sources).length;
@@ -54,7 +82,7 @@ async function main() {
   console.log(
     wheels.length
       ? `wheels: ${wheels.join(", ")}`
-      : "wheels: none (site will use the auditok VAD fallback)",
+      : "wheels: none (video/audio sync disabled until the webrtcvad wheel is built)",
   );
 }
 
