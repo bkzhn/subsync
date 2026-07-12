@@ -9,6 +9,8 @@ PYODIDE_VERSION := $(shell python3 -c "import json;print(json.load(open('build.c
 # node may be provided via nvm and absent from make's bare PATH; fall back to the
 # newest nvm-installed node so `make` works outside an nvm-initialized shell.
 NODE ?= $(shell command -v node 2>/dev/null || ls $(HOME)/.nvm/versions/node/*/bin/node 2>/dev/null | sort -V | tail -1)
+# Build version for cache-busting (?v=...) — same source as _frozen_version.py.
+VERSION := $(shell cd "$(REPO_ROOT)" && git describe --tags --always --dirty 2>/dev/null || echo dev)
 
 # Deps the native correctness tests need (mirror build.config.json + the
 # transitive libs ffsubsync imports at load time). webrtcvad-wheels is the native
@@ -45,6 +47,10 @@ site: vendor
 	cp index.html build.config.json "$(DIST)/"
 	cp -R src "$(DIST)/src"
 	cp -R vendor "$(DIST)/vendor"
+	# Cache-busting: version the entry script so a new deploy is never mixed with
+	# a stale main.js. main.js threads the same ?v= to everything it loads.
+	sed -i.bak 's#src="./src/main.js"#src="./src/main.js?v=$(VERSION)"#' "$(DIST)/index.html"
+	rm -f "$(DIST)/index.html.bak"
 	# The browser loads Python only from vendor/py_sources.json; drop the raw
 	# bridge source and any bytecode cache so dist ships just the JS + bundle.
 	rm -rf "$(DIST)/src/__pycache__" "$(DIST)/src/ffsubsync_bridge.py"

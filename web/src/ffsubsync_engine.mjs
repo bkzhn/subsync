@@ -5,6 +5,12 @@
 export async function bootEngine({ configUrl, onStatus } = {}) {
   const status = (s) => onStatus && onStatus(s);
 
+  // Cache-busting: configUrl carries ?v=<build>; append it to our other
+  // same-origin fetches (but NOT wheel URLs — micropip parses the filename from
+  // the URL, and those are already content-addressed by name+version).
+  const v = new URL(configUrl).searchParams.get("v") || "";
+  const withV = (u) => (v ? u + (u.includes("?") ? "&" : "?") + "v=" + v : u);
+
   status("fetching config…");
   const config = await (await fetch(configUrl)).json();
 
@@ -26,7 +32,7 @@ export async function bootEngine({ configUrl, onStatus } = {}) {
   let wheels = [];
   if (config.wheelManifest) {
     try {
-      wheels = (await (await fetch(new URL(config.wheelManifest, configUrl))).json()) || [];
+      wheels = (await (await fetch(withV(new URL(config.wheelManifest, configUrl).href))).json()) || [];
     } catch (_) {
       wheels = [];
     }
@@ -62,7 +68,7 @@ _probe()
 
   status("loading ffsubsync…");
   const sources = await (
-    await fetch(new URL(config.pySourcesManifest, configUrl))
+    await fetch(withV(new URL(config.pySourcesManifest, configUrl).href))
   ).json();
   const FS = pyodide.FS;
   FS.mkdirTree("/lib");

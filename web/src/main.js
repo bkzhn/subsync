@@ -18,10 +18,16 @@ const els = {
 const SUBTITLE_ACCEPT = ".srt,.ass,.ssa,.ttml,.vtt,.sub";
 const VIDEO_ACCEPT = "video/*,audio/*,.mkv,.mp4,.avi,.mov,.webm,.m4v,.mka,.mp3,.aac,.flac,.wav,.ogg";
 
-const configUrl = new URL("./build.config.json", document.baseURI).href;
-const worker = new Worker(new URL("./src/worker.js", document.baseURI), {
-  type: "module",
-});
+// Cache-busting: index.html loads this as main.js?v=<build>. Thread that version
+// onto everything we load so a new deploy never mixes fresh + stale modules.
+const V = new URL(import.meta.url).searchParams.get("v") || "";
+const withV = (url) => (V ? url + (url.includes("?") ? "&" : "?") + "v=" + V : url);
+
+const configUrl = withV(new URL("./build.config.json", document.baseURI).href);
+const worker = new Worker(
+  withV(new URL("./src/worker.js", document.baseURI).href),
+  { type: "module" },
+);
 
 let engineReady = false;
 let capabilities = { webrtcvad: false };
@@ -46,8 +52,16 @@ worker.onmessage = (event) => {
   }
 };
 
+worker.onerror = (e) =>
+  setStatus("Worker failed to load: " + (e.message || e.filename || e), true);
+worker.onmessageerror = () => setStatus("Worker message error", true);
+
 setStatus("Loading Python runtime (first load downloads a few MB)…");
-worker.postMessage({ type: "init", configUrl });
+worker.postMessage({
+  type: "init",
+  configUrl,
+  engineUrl: withV(new URL("./src/ffsubsync_engine.mjs", document.baseURI).href),
+});
 
 for (const input of [els.ref, els.input]) {
   input.addEventListener("change", refreshButton);
@@ -108,12 +122,14 @@ async function onSync() {
     // PCM is transferred to the Pyodide worker for VAD + alignment.
     let pcm;
     try {
-      const { decodeAudioToPcm } = await import("./ffmpeg_decode.mjs");
+      const { decodeAudioToPcm } = await import(
+        withV(new URL("./ffmpeg_decode.mjs", import.meta.url).href)
+      );
       // Resolve the vendored module paths to absolute URLs against the site root.
       const ff = {
         ...ffmpegConfig,
-        module: new URL(ffmpegConfig.module, document.baseURI).href,
-        util: new URL(ffmpegConfig.util, document.baseURI).href,
+        module: withV(new URL(ffmpegConfig.module, document.baseURI).href),
+        util: withV(new URL(ffmpegConfig.util, document.baseURI).href),
       };
       pcm = await decodeAudioToPcm(ff, refFile, { status: setStatus });
     } catch (e) {
