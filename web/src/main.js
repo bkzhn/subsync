@@ -25,6 +25,7 @@ const worker = new Worker(new URL("./src/worker.js", document.baseURI), {
 
 let engineReady = false;
 let capabilities = { webrtcvad: false };
+let ffmpegConfig = null;
 
 worker.onmessage = (event) => {
   const msg = event.data || {};
@@ -33,6 +34,7 @@ worker.onmessage = (event) => {
   } else if (msg.type === "ready") {
     engineReady = true;
     capabilities = msg.capabilities || capabilities;
+    ffmpegConfig = msg.ffmpeg || null;
     setStatus("Ready. Pick a reference and a subtitle file to sync.");
     refreshButton();
   } else if (msg.type === "result") {
@@ -100,15 +102,39 @@ async function onSync() {
       setBusy(false);
       return;
     }
-    // Do NOT read the (possibly huge) reference into memory: hand the File to the
-    // worker, where ffmpeg.wasm mounts it lazily via WORKERFS.
-    const vad = "webrtc";
+    // Decode audio on the main thread with ffmpeg.wasm (it spawns its own worker;
+    // nesting that inside the Pyodide worker hangs). The reference File is mounted
+    // lazily via WORKERFS — never fully read into memory — then only the decoded
+    // PCM is transferred to the Pyodide worker for VAD + alignment.
+    let pcm;
+    try {
+      const { decodeAudioToPcm } = await import("./ffmpeg_decode.mjs");
+      // Resolve the vendored module paths to absolute URLs against the site root.
+      const ff = {
+        ...ffmpegConfig,
+        module: new URL(ffmpegConfig.module, document.baseURI).href,
+        util: new URL(ffmpegConfig.util, document.baseURI).href,
+      };
+      pcm = await decodeAudioToPcm(ff, refFile, { status: setStatus });
+    } catch (e) {
+      console.error(e);
+      setStatus("audio decode failed: " + (e && e.message || e), true);
+      setBusy(false);
+      return;
+    }
     worker.postMessage(
       {
-        type: "syncAudio",
-        payload: { refFile, inName: inFile.name, inBytes, vad, options },
+        type: "syncAudioPcm",
+        payload: {
+          pcm,
+          frameRate: ffmpegConfig.frameRate,
+          inName: inFile.name,
+          inBytes,
+          vad: "webrtc",
+          options,
+        },
       },
-      [inBytes.buffer],
+      [pcm.buffer, inBytes.buffer],
     );
   } else {
     setStatus("Reading reference…");

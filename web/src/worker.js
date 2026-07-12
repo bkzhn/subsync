@@ -1,12 +1,13 @@
-// Module Web Worker: runs Pyodide + ffsubsync (and, for the audio path,
-// ffmpeg.wasm) off the main thread so the UI stays responsive.
+// Module Web Worker: runs Pyodide + ffsubsync off the main thread so the UI stays
+// responsive. Audio decoding (ffmpeg.wasm) runs on the *main* thread — ffmpeg.wasm
+// spawns its own worker, and nesting that inside this worker is unreliable — so we
+// receive already-decoded PCM here.
 
 import {
   bootEngine,
   syncWithEngine,
   syncAudioWithEngine,
 } from "./ffsubsync_engine.mjs";
-import { decodeAudioToPcm } from "./ffmpeg_decode.mjs";
 
 let engine = null;
 
@@ -18,21 +19,22 @@ self.onmessage = async (event) => {
         configUrl: msg.configUrl,
         onStatus: (status) => post({ type: "status", status }),
       });
-      post({ type: "ready", capabilities: engine.capabilities });
+      post({
+        type: "ready",
+        capabilities: engine.capabilities,
+        ffmpeg: engine.config.ffmpeg,
+      });
     } else if (msg.type === "sync") {
       if (!engine) throw new Error("engine not initialized");
       post({ type: "status", status: "syncing…" });
       post({ type: "result", result: syncWithEngine(engine, msg.payload) });
-    } else if (msg.type === "syncAudio") {
+    } else if (msg.type === "syncAudioPcm") {
       if (!engine) throw new Error("engine not initialized");
-      const { refFile, inName, inBytes, vad, options } = msg.payload;
-      const pcm = await decodeAudioToPcm(engine.config.ffmpeg, refFile, {
-        status: (status) => post({ type: "status", status }),
-      });
       post({ type: "status", status: "detecting speech + aligning…" });
+      const { pcm, frameRate, inName, inBytes, vad, options } = msg.payload;
       const result = syncAudioWithEngine(engine, {
         pcm,
-        frameRate: engine.config.ffmpeg.frameRate,
+        frameRate,
         inName,
         inBytes,
         vad,

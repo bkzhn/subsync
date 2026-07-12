@@ -72,6 +72,34 @@ async function main() {
   const count = Object.keys(sources).length;
   console.log(`vendored ${count} python files -> ${path.relative(repoRoot, outFile)}`);
 
+  // Vendor @ffmpeg/ffmpeg + @ffmpeg/util (ESM) same-origin. ffmpeg.wasm's worker
+  // uses relative imports (./const.js), which break when the module is loaded
+  // cross-origin or as a blob — so it must be served from our own origin.
+  const cfg = JSON.parse(await fs.readFile(path.join(webDir, "build.config.json"), "utf8"));
+  const FF = {
+    ffmpeg: {
+      pkg: cfg.ffmpeg.ffmpegPkg,
+      dir: "ffmpeg",
+      files: ["index.js", "classes.js", "const.js", "errors.js", "types.js", "utils.js", "worker.js"],
+    },
+    util: {
+      pkg: cfg.ffmpeg.utilPkg,
+      dir: "util",
+      files: ["index.js", "const.js", "errors.js", "types.js"],
+    },
+  };
+  for (const { pkg, dir, files } of Object.values(FF)) {
+    const destDir = path.join(outDir, dir);
+    await fs.mkdir(destDir, { recursive: true });
+    for (const name of files) {
+      const url = `https://cdn.jsdelivr.net/npm/${pkg}/dist/esm/${name}`;
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`fetch ${url} -> ${resp.status}`);
+      await fs.writeFile(path.join(destDir, name), await resp.text());
+    }
+    console.log(`vendored ${files.length} files from ${pkg} -> vendor/${dir}/`);
+  }
+
   // Wheels manifest (webrtcvad wasm wheel, if built).
   const wheelDir = path.join(outDir, "wheels");
   await fs.mkdir(wheelDir, { recursive: true });

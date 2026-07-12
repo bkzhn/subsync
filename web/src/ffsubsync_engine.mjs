@@ -22,8 +22,8 @@ export async function bootEngine({ configUrl, onStatus } = {}) {
   await micropip.install(config.pipPackages);
 
   // Optional: the webrtcvad wasm wheel (exact CLI-parity VAD for the audio path).
-  // Absent until built in CI; the app falls back to auditok when it's missing.
-  const capabilities = { webrtcvad: false };
+  // Absent until built in CI; when missing/broken, video/audio sync is disabled.
+  const capabilities = { webrtcvad: false, webrtcvadError: "" };
   if (config.wheelManifest) {
     try {
       const manifestUrl = new URL(config.wheelManifest, configUrl);
@@ -43,12 +43,29 @@ export async function bootEngine({ configUrl, onStatus } = {}) {
         await micropip.install(new URL(config.wheelDir + name, configUrl).href);
       }
       if ((wheels || []).length) {
-        capabilities.webrtcvad = pyodide.runPython(
-          "def _c():\n try:\n  import webrtcvad; return True\n except Exception:\n  return False\n_c()",
-        );
+        const probe = pyodide.runPython(`
+def _probe():
+    try:
+        import webrtcvad  # noqa: F401
+        return (True, "")
+    except Exception:
+        import traceback
+        return (False, traceback.format_exc())
+_probe()
+`);
+        const [ok, err] = probe.toJs();
+        probe.destroy();
+        capabilities.webrtcvad = ok;
+        if (!ok) {
+          capabilities.webrtcvadError = err;
+          console.warn("webrtcvad wheel present but import failed:\n" + err);
+          status("webrtcvad import failed (video/audio disabled)");
+        }
       }
     } catch (e) {
-      status("no webrtcvad wheel (video/audio disabled)");
+      capabilities.webrtcvadError = String((e && e.stack) || e);
+      console.warn("webrtcvad wheel install failed:", e);
+      status("webrtcvad install failed (video/audio disabled)");
     }
   }
 

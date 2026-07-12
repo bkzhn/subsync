@@ -13,10 +13,12 @@ async function getFfmpeg(cfg, status) {
   if (_ffmpegPromise) return _ffmpegPromise;
   _ffmpegPromise = (async () => {
     status && status("loading ffmpeg.wasm…");
-    const { FFmpeg } = await import(cfg.ffmpegCdn);
-    const { toBlobURL } = await import(cfg.utilCdn);
+    // @ffmpeg/ffmpeg is vendored same-origin (its worker uses relative imports),
+    // so FFmpeg's default `new URL('./worker.js', import.meta.url)` resolves fine.
+    const { FFmpeg } = await import(cfg.module);
+    const { toBlobURL } = await import(cfg.util);
     const ffmpeg = new FFmpeg();
-    // Same-origin blob URLs for the core so the internal worker can load them.
+    // The core (JS + ~30MB wasm) stays on the CDN; fetch it as same-origin blobs.
     const [coreURL, wasmURL] = await Promise.all([
       toBlobURL(cfg.coreCdn + "ffmpeg-core.js", "text/javascript"),
       toBlobURL(cfg.coreCdn + "ffmpeg-core.wasm", "application/wasm"),

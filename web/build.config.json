@@ -7,10 +7,13 @@
   "wheelDir": "vendor/wheels/",
   "wheelManifest": "vendor/wheels/manifest.json",
   "pyWebrtcvadRef": "2.0.10",
+  "pyodideAbiTag": "pyodide_2025_0_wasm32",
   "ffmpeg": {
-    "coreCdn": "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd/",
-    "ffmpegCdn": "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.15/dist/esm/ffmpeg.js",
-    "utilCdn": "https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.2/dist/esm/index.js",
+    "ffmpegPkg": "@ffmpeg/ffmpeg@0.12.15",
+    "utilPkg": "@ffmpeg/util@0.12.2",
+    "coreCdn": "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm/",
+    "module": "vendor/ffmpeg/index.js",
+    "util": "vendor/util/index.js",
     "frameRate": 16000
   },
   "audioVad": {

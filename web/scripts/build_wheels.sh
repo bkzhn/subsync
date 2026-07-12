@@ -20,6 +20,7 @@ CONFIG="$WEB_DIR/build.config.json"
 read_cfg() { python3 -c "import json,sys;print(json.load(open('$CONFIG'))$1)"; }
 PYODIDE_VERSION="$(read_cfg "['pyodideVersion']")"
 PY_WEBRTCVAD_REF="$(read_cfg "['pyWebrtcvadRef']")"
+PYODIDE_ABI_TAG="$(read_cfg "['pyodideAbiTag']")"
 
 WHEEL_OUT="$WEB_DIR/vendor/wheels"
 mkdir -p "$WHEEL_OUT"
@@ -53,6 +54,17 @@ perl -0pi -e 's/#else\n#error Please add support for your architecture in typede
 grep -q "__wasm__" cbits/webrtc/typedefs.h || { echo "typedefs.h wasm patch failed"; exit 1; }
 
 pyodide build
+
+# Recent pyodide-build (>= PEP 783) tags wheels `pyemscripten_2025_0_wasm32`, but
+# the pinned Pyodide runtime advertises the *same* ABI under its pre-rename name
+# and rejects the new spelling ("built with Emscripten vpyemscripten.2025.0 but
+# Pyodide was built with Emscripten v4.0.9"). Retag to the runtime's ABI tag.
+# This is a pure rename of an identical ABI (verified: the retagged wheel installs
+# and imports in the 0.28.x runtime).
+if ! ls dist/*-"$PYODIDE_ABI_TAG".whl >/dev/null 2>&1; then
+  python3 -m pip install --quiet wheel
+  python3 -m wheel tags --platform-tag "$PYODIDE_ABI_TAG" --remove dist/*.whl
+fi
 popd >/dev/null
 
 # 3. Publish the wheel into the site's vendor dir.
