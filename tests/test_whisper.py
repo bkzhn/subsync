@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import re
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -13,6 +14,20 @@ from ffsubsync.speech_transformers import (
     _infer_whisper_language,
     _parse_filter_opts,
 )
+
+
+def _dest_from_ffmpeg_args(args):
+    """Recover the real ``destination`` path from a built ``-af`` filter arg.
+
+    ``destination`` is always the last whisper option, and its value is escaped
+    for the filtergraph (``\\`` -> ``\\\\``, ``:`` -> ``\\:``), so on Windows a
+    temp path like ``C:\\...\\whisper.srt`` appears escaped in the filter. Take
+    everything after the final ``destination=`` and reverse the escaping.
+    """
+    af = args[args.index("-af") + 1]
+    escaped = af.rsplit("destination=", 1)[1]
+    # every escaped special char is a single backslash followed by that char
+    return re.sub(r"\\(.)", r"\1", escaped)
 
 
 # ---------------------------------------------------------------------------
@@ -169,9 +184,7 @@ def test_fit_happy_path(mock_support, mock_popen, mock_probe, tmp_path):
     # simulate ffmpeg by writing the canned SRT to the destination path parsed
     # out of the -af whisper filter argument
     def fake_popen(args, **kwargs):
-        af = args[args.index("-af") + 1]
-        dest = af.split("destination=", 1)[1].split(":", 1)[0]
-        with open(dest, "wb") as f:
+        with open(_dest_from_ffmpeg_args(args), "wb") as f:
             f.write(_CANNED_SRT)
         return _mock_popen(returncode=0)
 
@@ -198,9 +211,7 @@ def test_fit_warns_on_embedded_subs(mock_support, mock_popen, mock_probe, tmp_pa
     mock_probe.return_value = ["0:2"]  # one embedded subtitle stream
 
     def fake_popen(args, **kwargs):
-        af = args[args.index("-af") + 1]
-        dest = af.split("destination=", 1)[1].split(":", 1)[0]
-        with open(dest, "wb") as f:
+        with open(_dest_from_ffmpeg_args(args), "wb") as f:
             f.write(_CANNED_SRT)
         return _mock_popen(returncode=0)
 
@@ -211,7 +222,7 @@ def test_fit_warns_on_embedded_subs(mock_support, mock_popen, mock_probe, tmp_pa
     t = WhisperSpeechTransformer(model_path=str(model))
     with caplog.at_level(logging.WARNING):
         t.fit("video.mkv")
-    assert any("already contains" in rec.message for rec in caplog.records)
+    assert "already contains" in caplog.text
 
 
 @patch("ffsubsync.speech_transformers._probe_embedded_subtitle_streams", return_value=None)
@@ -255,7 +266,7 @@ def test_resolve_vad_model_warns_on_named_choice(caplog):
     t = WhisperSpeechTransformer(model_path="m.bin", vad="webrtc")
     with caplog.at_level(logging.WARNING):
         assert t._resolve_vad_model() is None
-    assert any("ignored in whisper" in rec.message for rec in caplog.records)
+    assert "ignored in whisper" in caplog.text
 
 
 def test_resolve_vad_model_none_when_unset():
