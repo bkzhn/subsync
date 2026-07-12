@@ -29,7 +29,7 @@ async function getFfmpeg(cfg, status) {
   return _ffmpegPromise;
 }
 
-export async function decodeAudioToPcm(cfg, file, { status, stream } = {}) {
+export async function decodeAudioToPcm(cfg, file, { status, stream, onProgress } = {}) {
   const ffmpeg = await getFfmpeg(cfg, status);
   const frameRate = cfg.frameRate || 16000;
   const mountDir = "/mnt";
@@ -38,6 +38,10 @@ export async function decodeAudioToPcm(cfg, file, { status, stream } = {}) {
   const mounted = `${mountDir}/${file.name}`;
 
   status && status("decoding audio (this can take a bit on long videos)…");
+  // ffmpeg reports decode progress as a 0–1 fraction. The instance is memoized in
+  // getFfmpeg, so the listener MUST be removed after this decode.
+  const onP = onProgress ? ({ progress }) => onProgress(progress) : null;
+  if (onP) ffmpeg.on("progress", onP);
   try {
     try {
       await ffmpeg.createDir(mountDir);
@@ -62,6 +66,7 @@ export async function decodeAudioToPcm(cfg, file, { status, stream } = {}) {
     const data = await ffmpeg.readFile(outPath); // Uint8Array
     return data;
   } finally {
+    if (onP) ffmpeg.off("progress", onP);
     try {
       await ffmpeg.deleteFile(outPath);
     } catch {

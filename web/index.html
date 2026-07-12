@@ -68,6 +68,40 @@
       button:disabled { opacity: .5; cursor: not-allowed; }
       #status { color: var(--muted); font-size: .9rem; margin-top: .75rem; min-height: 1.4em; }
       #status.error { color: var(--error); white-space: pre-wrap; }
+      .progress { display: flex; align-items: center; gap: .6rem; margin-top: .6rem; }
+      .progress-track {
+        flex: 1;
+        height: 8px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: color-mix(in srgb, var(--fg) 12%, transparent);
+      }
+      .progress-fill {
+        height: 100%;
+        width: 0%;
+        background: var(--accent);
+        border-radius: 999px;
+        transition: width .15s ease;
+      }
+      .progress-pct {
+        font-variant-numeric: tabular-nums;
+        font-size: .8rem;
+        color: var(--muted);
+        min-width: 3.5ch;
+        text-align: right;
+      }
+      .progress.indeterminate .progress-fill {
+        width: 40%;
+        animation: progress-slide 1.1s ease-in-out infinite;
+      }
+      .progress.indeterminate .progress-pct { visibility: hidden; }
+      @keyframes progress-slide {
+        0% { margin-left: -40%; }
+        100% { margin-left: 100%; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .progress.indeterminate .progress-fill { animation: none; }
+      }
       #result { margin-top: 1rem; }
       #offset { font-variant-numeric: tabular-nums; font-weight: 600; }
       a#download {
@@ -125,6 +159,11 @@
 
       <button id="sync-btn" disabled>Sync subtitles</button>
       <div id="status"></div>
+      <div id="progress" class="progress" role="progressbar"
+           aria-valuemin="0" aria-valuemax="100" hidden>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+        <span class="progress-pct" id="progress-pct"></span>
+      </div>
 
       <div id="result" class="card" hidden>
         <div><span id="offset"></span></div>

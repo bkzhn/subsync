@@ -10,6 +10,9 @@ const els = {
   gss: document.getElementById("gss"),
   syncBtn: document.getElementById("sync-btn"),
   status: document.getElementById("status"),
+  progress: document.getElementById("progress"),
+  progressFill: document.getElementById("progress-fill"),
+  progressPct: document.getElementById("progress-pct"),
   result: document.getElementById("result"),
   offset: document.getElementById("offset"),
   download: document.getElementById("download"),
@@ -121,6 +124,7 @@ async function onSync() {
     // lazily via WORKERFS — never fully read into memory — then only the decoded
     // PCM is transferred to the Pyodide worker for VAD + alignment.
     let pcm;
+    showProgress();
     try {
       const { decodeAudioToPcm } = await import(
         withV(new URL("./ffmpeg_decode.mjs", import.meta.url).href)
@@ -131,13 +135,20 @@ async function onSync() {
         module: withV(new URL(ffmpegConfig.module, document.baseURI).href),
         util: withV(new URL(ffmpegConfig.util, document.baseURI).href),
       };
-      pcm = await decodeAudioToPcm(ff, refFile, { status: setStatus });
+      pcm = await decodeAudioToPcm(ff, refFile, {
+        status: setStatus,
+        onProgress: setProgress,
+      });
     } catch (e) {
       console.error(e);
+      hideProgress();
       setStatus("audio decode failed: " + (e && e.message || e), true);
       setBusy(false);
       return;
     }
+    // Decode done; the VAD/align phase has no measurable progress, so drop back
+    // to the text status.
+    hideProgress();
     worker.postMessage(
       {
         type: "syncAudioPcm",
@@ -198,8 +209,38 @@ function setStatus(text, isError = false) {
   els.status.classList.toggle("error", isError);
 }
 
+// Show the decode progress bar, starting indeterminate (ffmpeg.wasm loads before
+// any progress events arrive).
+function showProgress() {
+  els.progress.hidden = false;
+  els.progress.classList.add("indeterminate");
+  els.progressFill.style.width = "0%";
+  els.progressPct.textContent = "";
+  els.progress.removeAttribute("aria-valuenow");
+}
+
+// Drive the bar from ffmpeg's 0–1 progress. A non-finite or out-of-range value
+// (duration unknown) keeps the bar indeterminate rather than showing a bogus %.
+function setProgress(fraction) {
+  if (Number.isFinite(fraction) && fraction > 0 && fraction <= 1) {
+    const pct = Math.round(fraction * 100);
+    els.progress.classList.remove("indeterminate");
+    els.progressFill.style.width = pct + "%";
+    els.progressPct.textContent = pct + "%";
+    els.progress.setAttribute("aria-valuenow", String(pct));
+  }
+}
+
+function hideProgress() {
+  els.progress.hidden = true;
+  els.progress.classList.remove("indeterminate");
+}
+
 function setBusy(busy) {
   els.syncBtn.disabled = busy;
   els.syncBtn.textContent = busy ? "Syncing…" : "Sync subtitles";
-  if (!busy) refreshButton();
+  if (!busy) {
+    hideProgress();
+    refreshButton();
+  }
 }
