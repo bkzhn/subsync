@@ -64,6 +64,7 @@ test-audio:
 # network and Playwright; intended for CI. Falls back with a clear message.
 test-browser: site
 	$(NODE) tests/browser_sync.mjs
+	$(NODE) tests/browser_audio.mjs
 
 clean:
 	rm -rf "$(WEB_DIR)/dist" "$(WEB_DIR)/vendor/py_sources.json"

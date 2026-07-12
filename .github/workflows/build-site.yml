@@ -53,17 +53,25 @@ jobs:
 
   test-browser:
     runs-on: ubuntu-latest
+    # The audio browser test needs the webrtcvad wheel; pull it from build-wheels.
+    needs: [build-wheels]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - name: Fetch webrtcvad wheel (for the audio-path test)
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: webrtcvad-wheel
+          path: web/vendor/wheels
       - name: Install Playwright
         working-directory: web
         run: |
           npm install
           npx playwright install --with-deps chromium
-      - name: Headless browser sync test (full Pyodide path)
+      - name: Headless browser tests (sub-vs-sub + audio path)
         run: make -C web test-browser
 
   build-site:
