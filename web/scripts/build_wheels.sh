@@ -44,6 +44,14 @@ source "$WORK/emsdk/emsdk_env.sh"
 git clone --quiet --depth 1 --branch "$PY_WEBRTCVAD_REF" \
   https://github.com/wiseman/py-webrtcvad "$WORK/py-webrtcvad"
 pushd "$WORK/py-webrtcvad" >/dev/null
+
+# WebRTC's typedefs.h enumerates x86/ARM/MIPS/pnacl but not wasm32, so it hits
+# `#error Please add support for your architecture`. wasm32 is little-endian and
+# 32-bit; add a branch for it before the #else so the build recognizes the target.
+perl -0pi -e 's/#else\n#error Please add support for your architecture in typedefs\.h/#elif defined(__wasm__) || defined(__wasm32__) || defined(__EMSCRIPTEN__)\n#define WEBRTC_ARCH_32_BITS\n#define WEBRTC_ARCH_LITTLE_ENDIAN\n#else\n#error Please add support for your architecture in typedefs.h/' \
+  cbits/webrtc/typedefs.h
+grep -q "__wasm__" cbits/webrtc/typedefs.h || { echo "typedefs.h wasm patch failed"; exit 1; }
+
 pyodide build
 popd >/dev/null
 

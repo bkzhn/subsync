@@ -28,6 +28,16 @@ export async function bootEngine({ configUrl, onStatus } = {}) {
     try {
       const manifestUrl = new URL(config.wheelManifest, configUrl);
       const wheels = await (await fetch(manifestUrl)).json();
+      if ((wheels || []).length) {
+        // webrtcvad.py does `import pkg_resources` at import time, so it needs
+        // setuptools present. Best-effort; if it fails the import test below just
+        // reports webrtcvad unavailable.
+        try {
+          await micropip.install("setuptools");
+        } catch (_) {
+          /* ignore */
+        }
+      }
       for (const name of wheels || []) {
         status(`installing ${name}…`);
         await micropip.install(new URL(config.wheelDir + name, configUrl).href);
@@ -38,7 +48,7 @@ export async function bootEngine({ configUrl, onStatus } = {}) {
         );
       }
     } catch (e) {
-      status("no webrtcvad wheel (using auditok fallback)");
+      status("no webrtcvad wheel (video/audio disabled)");
     }
   }
 
