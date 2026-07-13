@@ -61,7 +61,7 @@ def _synced_name(in_name: str) -> str:
 
 
 def _common_argv(in_path, out_path, *, output_encoding, no_fix_framerate, gss,
-                 max_offset_seconds):
+                 max_offset_seconds, split_sync=False):
     argv = ["-i", in_path, "-o", out_path]
     if output_encoding:
         argv += ["--output-encoding", output_encoding]
@@ -69,6 +69,9 @@ def _common_argv(in_path, out_path, *, output_encoding, no_fix_framerate, gss,
         argv += ["--no-fix-framerate"]
     if gss:
         argv += ["--gss"]
+    if split_sync:
+        # Bare flag => alass-style piecewise sync with the built-in default penalty.
+        argv += ["--split-penalty"]
     if max_offset_seconds is not None:
         argv += ["--max-offset-seconds", str(max_offset_seconds)]
     return argv
@@ -115,6 +118,7 @@ def sync_subtitles(
     output_encoding: str = "utf-8",
     no_fix_framerate: bool = False,
     gss: bool = False,
+    split_sync: bool = False,
     max_offset_seconds=None,
 ):
     """Sync ``in_bytes`` against subtitle reference ``ref_bytes`` (Phase 1)."""
@@ -125,7 +129,7 @@ def sync_subtitles(
 
     argv = [ref_path] + _common_argv(
         in_path, out_path, output_encoding=output_encoding,
-        no_fix_framerate=no_fix_framerate, gss=gss,
+        no_fix_framerate=no_fix_framerate, gss=gss, split_sync=split_sync,
         max_offset_seconds=max_offset_seconds,
     )
     if reference_encoding:
@@ -186,6 +190,7 @@ def sync_with_audio(
     output_encoding: str = "utf-8",
     no_fix_framerate: bool = False,
     gss: bool = False,
+    split_sync: bool = False,
     max_offset_seconds=None,
 ):
     """Sync ``in_bytes`` against decoded audio PCM from a video/audio reference.
@@ -217,7 +222,7 @@ def sync_with_audio(
 
     argv = [npz_path] + _common_argv(
         in_path, out_path, output_encoding=output_encoding,
-        no_fix_framerate=no_fix_framerate, gss=gss,
+        no_fix_framerate=no_fix_framerate, gss=gss, split_sync=split_sync,
         max_offset_seconds=max_offset_seconds,
     )
     argv += ["--non-speech-label", str(non_speech_label)]

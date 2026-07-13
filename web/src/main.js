@@ -8,6 +8,7 @@ const els = {
   input: document.getElementById("input-file"),
   noFixFramerate: document.getElementById("no-fix-framerate"),
   gss: document.getElementById("gss"),
+  splitSync: document.getElementById("split-sync"),
   syncBtn: document.getElementById("sync-btn"),
   status: document.getElementById("status"),
   progress: document.getElementById("progress"),
@@ -103,6 +104,7 @@ async function onSync() {
     output_encoding: "utf-8",
     no_fix_framerate: !!els.noFixFramerate.checked,
     gss: !!els.gss.checked,
+    split_sync: !!els.splitSync.checked,
   };
 
   // The input subtitle is always small — read it into memory.

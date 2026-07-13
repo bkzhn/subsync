@@ -36,6 +36,37 @@ def make_srt(offset_seconds: float, n: int = 40) -> bytes:
     return "\n".join(lines).encode("utf-8")
 
 
+def make_srt_from(cues) -> bytes:
+    """Serialize ``[(start, end, text), ...]`` to SRT bytes."""
+    lines = []
+    for i, (start, end, text) in enumerate(cues, 1):
+        lines.append(str(i))
+        lines.append("{} --> {}".format(_ts(start), _ts(end)))
+        lines.append(text)
+        lines.append("")
+    return "\n".join(lines).encode("utf-8")
+
+
+def make_break_pair(break_shift: float = 8.0):
+    """A reference + an input with a mid-file break (second half shifted late).
+
+    Timings are deliberately *irregular* (varying gaps and durations) so that no
+    single global offset can masquerade as correct by aliasing one cue onto another
+    -- the split aligner is the only thing that can fix both halves.
+    """
+    gaps = [1.3, 2.7, 0.9, 3.1, 1.7, 2.2, 0.8, 2.9, 1.1, 3.3, 1.9, 2.4, 0.7, 3.0, 1.5]
+    durs = [1.2, 0.9, 2.1, 1.4, 0.8, 1.9, 1.1, 2.3, 0.9, 1.6, 1.3, 2.0, 1.0, 1.8, 1.2]
+    ref, t = [], 1.0
+    for i, (g, d) in enumerate(zip(gaps, durs)):
+        ref.append((t, t + d, "dialogue line number {}".format(i)))
+        t += d + g
+    broken = [
+        (a + break_shift, b + break_shift, x) if a >= 20 else (a, b, x)
+        for (a, b, x) in ref
+    ]
+    return make_srt_from(ref), make_srt_from(broken), ref
+
+
 def _ts(t: float) -> str:
     if t < 0:
         t = 0.0
@@ -73,6 +104,33 @@ def main() -> int:
     assert result["output_text"].strip(), "output should be non-empty"
     assert "-->" in result["output_text"], "output should be SRT"
     print("\nPASS: detected offset %.3fs matches expected %.1fs" % (off, expected_offset))
+
+    # --- split_sync path: a mid-file break a single offset cannot fix -------------
+    import srt as _srt
+
+    ref_bytes, broken_bytes, ref_cues = make_break_pair(break_shift=8.0)
+
+    plain = bridge.sync_subtitles(
+        "reference.srt", ref_bytes, "broken.srt", broken_bytes,
+        max_offset_seconds=30,
+    )
+    split = bridge.sync_subtitles(
+        "reference.srt", ref_bytes, "broken.srt", broken_bytes,
+        split_sync=True, max_offset_seconds=30,
+    )
+    assert split["ok"], "split sync should succeed"
+
+    ref_starts = [c[0] for c in ref_cues]
+    plain_starts = [c.start.total_seconds() for c in _srt.parse(plain["output_text"])]
+    split_starts = [c.start.total_seconds() for c in _srt.parse(split["output_text"])]
+    plain_err = max(abs(a - b) for a, b in zip(ref_starts, plain_starts))
+    split_err = max(abs(a - b) for a, b in zip(ref_starts, split_starts))
+    print("mid-file break: single-offset max|Δ|=%.3fs, split max|Δ|=%.3fs"
+          % (plain_err, split_err))
+    assert plain_err > 5.0, "a single offset should NOT be able to fix a mid-file break"
+    assert split_err < 0.1, "split_sync should correct both halves"
+    print("PASS: split_sync fixes the mid-file break (Δ %.3fs) the single offset "
+          "could not (Δ %.3fs)" % (split_err, plain_err))
     return 0
 
 

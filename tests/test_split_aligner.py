@@ -76,6 +76,56 @@ def test_already_aligned_is_noop():
     assert _num_splits(offsets) == 0
 
 
+def test_length_penalty_prefers_matching_block():
+    # One cue of length 1s. The reference has a same-sized block at +10s and a long
+    # 5s block at +3s. Pure overlap is a flat 1s for any offset that drops the cue
+    # inside the long block, so its argmax tie-breaks to the (wrong) low offset +3.
+    # The length penalty charges reference speech just outside the cue edges, so the
+    # exactly-sized block at +10 (whose neighbours are silent) wins.
+    reference = _reference([(3.0, 8.0), (10.0, 11.0)], total_seconds=13)
+    cues = [_cue(0.0, 1.0)]
+
+    pure = _align(reference, cues, split_penalty=1e9, max_offset_seconds=12)
+    assert pure == [3 * SAMPLE_RATE]
+
+    penalized = compute_split_offsets(
+        reference,
+        cues,
+        sample_rate=SAMPLE_RATE,
+        start_seconds=0,
+        split_penalty=1e9,
+        length_penalty=0.25,
+        max_offset_samples=12 * SAMPLE_RATE,
+    )
+    assert penalized == [10 * SAMPLE_RATE]
+
+
+def test_subsample_improves_fractional_offset():
+    # The reference block is grid-aligned ([5.00, 6.00]) but the cue is offset from
+    # the sample grid by fractions of a sample, so its ideal shift is non-integer.
+    # Whole-sample search can only get within ~1 sample; sub-sample search recovers
+    # the fractional shift and thus strictly more overlap.
+    reference = _reference([(5.0, 6.0)], total_seconds=13)
+    cues = [_cue(0.003, 1.007)]
+
+    whole, whole_score = compute_split_offsets(
+        reference, cues, sample_rate=SAMPLE_RATE, start_seconds=0,
+        split_penalty=1e9, max_offset_samples=10 * SAMPLE_RATE, return_score=True,
+    )
+    fine, fine_score = compute_split_offsets(
+        reference, cues, sample_rate=SAMPLE_RATE, start_seconds=0,
+        split_penalty=1e9, max_offset_samples=10 * SAMPLE_RATE,
+        offset_step_samples=0.1, return_score=True,
+    )
+
+    # Sub-sample recovers essentially the full 1s (100 samples) of overlap...
+    assert fine_score > whole_score + 0.2
+    assert fine_score > 99.9
+    # ...at an offset near 4.99-5.00s but not snapped to a whole 10ms sample.
+    fine_seconds = fine[0] / float(SAMPLE_RATE)
+    assert 4.99 <= fine_seconds <= 5.0
+
+
 def test_empty_input():
     assert (
         compute_split_offsets(

@@ -19,6 +19,8 @@ from ffsubsync.constants import (
     DEFAULT_MAX_SUBTITLE_SECONDS,
     DEFAULT_NON_SPEECH_LABEL,
     DEFAULT_SPLIT_PENALTY,
+    DEFAULT_SPLIT_LENGTH_PENALTY,
+    DEFAULT_SPLIT_SUBSAMPLE,
     DEFAULT_START_SECONDS,
     DEFAULT_VAD,
     DEFAULT_ENCODING,
@@ -42,7 +44,7 @@ from ffsubsync.speech_transformers import (
     ProgressInfo,
     make_subtitle_speech_pipeline,
 )
-from ffsubsync.split_aligner import compute_split_offsets
+from ffsubsync.split_aligner import compute_split_offsets, log_split_segments
 from ffsubsync.subtitle_parser import make_subtitle_parser
 from ffsubsync.subtitle_transformers import (
     SubtitleMerger,
@@ -286,16 +288,45 @@ def try_sync(
                 and reference_speech is not None
             )
             if use_split:
-                offsets_samples = compute_split_offsets(
-                    reference_speech,
-                    list(scale_step.subs_),
-                    sample_rate=SAMPLE_RATE,
-                    start_seconds=args.start_seconds,
-                    split_penalty=split_penalty * SAMPLE_RATE,
-                    max_offset_samples=abs(
-                        int(args.max_offset_seconds * SAMPLE_RATE)
-                    ),
+                length_penalty = getattr(
+                    args, "split_length_penalty", DEFAULT_SPLIT_LENGTH_PENALTY
                 )
+                subsample = max(1, int(getattr(args, "split_subsample", 1) or 1))
+                max_off = abs(int(args.max_offset_seconds * SAMPLE_RATE))
+                # Joint framerate + split search: score the piecewise alignment at
+                # every candidate framerate scale (reusing the pipelines the global
+                # search already fit) and keep the best-scoring one, rather than
+                # committing to the scale the single-offset FFT search preferred.
+                candidate_pipes = [p for p in srt_pipes if not callable(p)]
+                if best_srt_pipe not in candidate_pipes:
+                    candidate_pipes.append(cast(Pipeline, best_srt_pipe))
+                best_split: Optional[Tuple[float, List[float], Pipeline]] = None
+                for cand_pipe in candidate_pipes:
+                    cand_offsets, cand_score = compute_split_offsets(
+                        reference_speech,
+                        list(cand_pipe.named_steps["scale"].subs_),
+                        sample_rate=SAMPLE_RATE,
+                        start_seconds=args.start_seconds,
+                        split_penalty=split_penalty * SAMPLE_RATE,
+                        length_penalty=length_penalty,
+                        offset_step_samples=1.0 / subsample,
+                        max_offset_samples=max_off,
+                        return_score=True,
+                        log_segments=False,
+                    )
+                    if best_split is None or cand_score > best_split[0]:
+                        best_split = (cand_score, cand_offsets, cand_pipe)
+                assert best_split is not None
+                _, offsets_samples, best_split_pipe = best_split
+                if best_split_pipe is not best_srt_pipe:
+                    logger.info(
+                        "split search preferred framerate scale %.3f (single-offset "
+                        "search had chosen %.3f)",
+                        best_split_pipe.named_steps["scale"].scale_factor,
+                        scale_step.scale_factor,
+                    )
+                scale_step = best_split_pipe.named_steps["scale"]
+                log_split_segments(offsets_samples, SAMPLE_RATE)
                 offsets_seconds = [
                     off / float(SAMPLE_RATE) + args.apply_offset_seconds
                     for off in offsets_samples
@@ -920,6 +951,27 @@ def add_cli_only_args(parser: argparse.ArgumentParser) -> None:
         "typical. Pass the flag with no value to use a reasonable default "
         "(%.0f). If the flag is omitted entirely (the default), a single global "
         "offset is used as before." % DEFAULT_SPLIT_PENALTY,
+    )
+    parser.add_argument(
+        "--split-length-penalty",
+        type=float,
+        default=DEFAULT_SPLIT_LENGTH_PENALTY,
+        help="Only meaningful with --split-penalty. Weight of the edge/length term "
+        "used when scoring each cue's placement ('standard scoring'): a cue is "
+        "charged this fraction of the reference speech just outside its edges, so it "
+        "prefers a same-sized speech block over sitting anywhere inside a longer one. "
+        "0 falls back to pure overlap scoring (default=%.2f)."
+        % DEFAULT_SPLIT_LENGTH_PENALTY,
+    )
+    parser.add_argument(
+        "--split-subsample",
+        type=int,
+        default=DEFAULT_SPLIT_SUBSAMPLE,
+        help="Only meaningful with --split-penalty. Sub-sample resolution of the "
+        "offset search: 1 aligns to whole %d Hz samples (%dms); higher values refine "
+        "the offset to 1/N of a sample via exact linear interpolation of the "
+        "reference. 1 is plenty for perceptual sync (default=%d)."
+        % (SAMPLE_RATE, 1000 // SAMPLE_RATE, DEFAULT_SPLIT_SUBSAMPLE),
     )
     parser.add_argument(
         "--max-duration-seconds",

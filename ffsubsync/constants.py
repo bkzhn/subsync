@@ -25,6 +25,19 @@ DEFAULT_APPLY_OFFSET_SECONDS: int = 0
 # structural breaks (ad breaks / scene cuts) that misalign everything after them.
 DEFAULT_SPLIT_PENALTY: float = 5.0
 
+# Weight of the piecewise aligner's edge/length term ("standard scoring"): each cue
+# is additionally charged this fraction of the reference speech in a guard band just
+# outside its edges, so a cue prefers a same-sized speech block over sitting anywhere
+# inside a longer one. 0 disables it (pure overlap scoring).
+DEFAULT_SPLIT_LENGTH_PENALTY: float = 0.25
+
+# Sub-sample resolution of the piecewise aligner's offset search: the offset grid is
+# refined to 1/this of a sample (1 => whole samples, i.e. 1000/SAMPLE_RATE ms steps).
+# The reference is a step function, so finer offsets are computed by exact linear
+# interpolation of its prefix sum. 1 is plenty for perceptual sync; raise it only when
+# sub-(1000/SAMPLE_RATE)ms precision actually matters.
+DEFAULT_SPLIT_SUBSAMPLE: int = 1
+
 # The named voice activity detectors accepted by --vad. Kept here (rather than
 # inline in the argparse `choices=`) so the CLI help text and the manual
 # validation in validate_args share a single source of truth -- necessary
