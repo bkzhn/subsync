@@ -31,6 +31,41 @@ automatically. Two flags adjust this behavior:
   skips the heuristic that guesses a ratio from the reference/subtitle duration
   ratio.
 
+.. _mid-file-breaks:
+
+Mid-file breaks (piecewise sync)
+--------------------------------
+
+A single offset — even combined with a framerate correction — assumes the whole
+subtitle is misaligned in one consistent way. Some files break that assumption
+partway through: a commercial break was cut out, a scene was inserted or removed
+(a "director's cut"), or two discs were concatenated into one file. After such a
+break the required offset *changes*, so no single global shift can fix both sides.
+
+``--split-penalty`` enables an `alass <https://github.com/kaegi/alass>`_-style
+piecewise alignment that lets the offset change across the timeline. It allows
+every cue its own offset but charges a penalty each time consecutive cues take
+different offsets, then maximizes total speech overlap minus those penalties by
+dynamic programming — so it introduces a break only where it genuinely buys a lot
+of alignment, and otherwise collapses to the ordinary single global offset.
+
+- ``--split-penalty [SECONDS]`` turns the mode on. The optional value is the cost,
+  in seconds of overlap, of introducing each split: lower splits more eagerly,
+  higher stays closer to a single offset (values around 4–20 are typical). Pass
+  the flag with no value for a reasonable default; omit it entirely (the default)
+  to keep the classic single-offset behavior.
+- ``--split-length-penalty`` (default ``0.25``) weights an edge term that rewards a
+  cue's edges lining up with the reference's speech boundaries, so a cue prefers a
+  same-sized speech block over sitting anywhere inside a longer one. This sharpens
+  where each break lands; ``0`` falls back to pure overlap scoring.
+- ``--split-subsample`` (default ``1``) refines the offset search below one
+  sample. ``1`` aligns to whole 10 ms samples, which is already imperceptible;
+  raise it only when finer offsets actually matter.
+
+The framerate-ratio search runs *jointly* with the split search — each candidate
+framerate is scored with its own best piecewise alignment — so a framerate
+mismatch and a mid-file break are corrected together.
+
 .. _vad-backends:
 
 Voice-activity detectors (``--vad``)

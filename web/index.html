@@ -53,6 +53,21 @@
       input[type="file"] { width: 100%; max-width: 100%; }
       .options { display: flex; gap: 1.25rem; flex-wrap: wrap; margin-top: .25rem; }
       .options label { display: flex; align-items: center; gap: .4rem; font-size: .9rem; }
+      .doc-link {
+        color: var(--muted);
+        text-decoration: none;
+        font-weight: 700;
+        font-size: .72rem;
+        width: 1.15rem;
+        height: 1.15rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        line-height: 1;
+      }
+      .doc-link:hover, .doc-link:focus-visible { color: var(--accent); border-color: var(--accent); }
       button {
         appearance: none;
         border: 0;
@@ -151,10 +166,23 @@
             <span class="hint">— the out-of-sync file to fix</span></span>
           <input type="file" id="input-file" accept=".srt,.ass,.ssa,.ttml,.vtt,.sub" />
         </label>
-        <div class="options">
-          <label><input type="checkbox" id="no-fix-framerate" /> Don't fix framerate</label>
-          <label><input type="checkbox" id="gss" /> Golden-section search</label>
-          <label title="Allow the offset to change across the timeline to correct commercial breaks, inserted/removed scenes (director's cuts), or two discs joined into one file. Leave off for a single global offset."><input type="checkbox" id="split-sync" /> Fix mid-file breaks</label>
+        <div class="field">
+          <span class="field-label">Advanced
+            <span class="hint">— optional; leave unchecked for the standard sync</span></span>
+          <div class="options">
+            <label title="Disable framerate correction and assume the reference and subtitles share a framerate. Helps when a spurious framerate 'correction' is making a borderline sync worse.">
+              <input type="checkbox" id="no-fix-framerate" /> Don't fix framerate
+              <a class="doc-link" href="https://ffsubsync.readthedocs.io/en/latest/advanced.html#framerate-correction" target="_blank" rel="noopener noreferrer" aria-label="Docs: framerate correction" title="Read the docs">?</a>
+            </label>
+            <label title="Use golden-section search to hunt for the optimal framerate ratio continuously, instead of only trying the common discrete ratios.">
+              <input type="checkbox" id="gss" /> Golden-section search
+              <a class="doc-link" href="https://ffsubsync.readthedocs.io/en/latest/advanced.html#framerate-correction" target="_blank" rel="noopener noreferrer" aria-label="Docs: golden-section search" title="Read the docs">?</a>
+            </label>
+            <label title="Allow the offset to change across the timeline to correct commercial breaks, inserted/removed scenes (director's cuts), or two discs joined into one file. Leave off for a single global offset.">
+              <input type="checkbox" id="split-sync" /> Fix mid-file breaks
+              <a class="doc-link" href="https://ffsubsync.readthedocs.io/en/latest/advanced.html#mid-file-breaks" target="_blank" rel="noopener noreferrer" aria-label="Docs: mid-file breaks" title="Read the docs">?</a>
+            </label>
+          </div>
         </div>
       </div>
 
