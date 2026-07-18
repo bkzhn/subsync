@@ -28,7 +28,7 @@ export async function bootEngine({ configUrl, onStatus } = {}) {
   // webrtcvad wasm wheel. deps=False guarantees micropip never contacts PyPI, so
   // the site works even where PyPI is blocked.
   status("installing libraries…");
-  const capabilities = { webrtcvad: false, webrtcvadError: "" };
+  const capabilities = { webrtcvad: false, webrtcvadError: "", cchardet: false };
   let wheels = [];
   if (config.wheelManifest) {
     try {
@@ -64,6 +64,18 @@ _probe()
       capabilities.webrtcvadError = err;
       console.warn("webrtcvad not available:\n" + err);
     }
+    // cchardet (faust-cchardet wasm wheel, if bundled) — subtitle_parser prefers
+    // it over charset-normalizer for exact CLI-parity encoding detection. Purely
+    // diagnostic: charset-normalizer (a core package) is the fallback either way.
+    capabilities.cchardet = !!pyodide.runPython(`
+def _cc_probe():
+    try:
+        import cchardet  # noqa: F401
+        return True
+    except Exception:
+        return False
+_cc_probe()
+`);
   }
 
   status("loading ffsubsync…");

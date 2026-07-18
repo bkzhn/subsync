@@ -1,6 +1,7 @@
 // Diagnostic: boot the pinned Pyodide, report its platform tags, then try to
-// micropip-install the deployed webrtcvad wheel and import it — printing the exact
-// error. Run: node tests/wheel_probe.mjs  (serves dist/site; needs network).
+// micropip-install every deployed wasm wheel (webrtcvad, cchardet) and import
+// them — printing the exact error. Run: node tests/wheel_probe.mjs
+// (serves dist/site; needs network).
 
 import http from "node:http";
 import { promises as fs } from "node:fs";
@@ -31,19 +32,26 @@ except Exception as e:
 {'get_platform': sysconfig.get_platform(), 'sys_platform': sys.platform, 'top_tags': tags}
 \`).toJs({dict_converter: Object.fromEntries});
   const manifest = await (await fetch('/vendor/wheels/manifest.json')).json();
-  const wheelUrl = new URL('/vendor/wheels/' + manifest[0], location.href).href;
+  window.__manifest = manifest;
+  const wheelUrls = manifest.map((n) => new URL('/vendor/wheels/' + n, location.href).href);
   try {
-    await micropip.install(wheelUrl);
+    await micropip.install(wheelUrls);
     window.__install = 'ok';
     window.__import = pyodide.runPython(\`
 def _p():
+    out = {}
     try:
         import webrtcvad
-        return ['ok', getattr(webrtcvad,'__version__','?')]
+        out['webrtcvad'] = ['ok', getattr(webrtcvad, '__version__', '?')]
     except Exception:
-        import traceback; return ['fail', traceback.format_exc()]
-_p()
-\`).toJs();
+        import traceback; out['webrtcvad'] = ['n/a', traceback.format_exc()]
+    try:
+        import cchardet
+        out['cchardet'] = ['ok', cchardet.detect(b'Hello, world!')]
+    except Exception:
+        import traceback; out['cchardet'] = ['n/a', traceback.format_exc()]
+    out
+\`).toJs({dict_converter: Object.fromEntries});
   } catch (e) {
     window.__install = 'FAILED: ' + (e && e.message || e);
   }
@@ -73,8 +81,9 @@ page.on("pageerror", (e) => console.log("[pageerror]", e.message));
 await page.goto(`http://localhost:${PORT}/probe.html`);
 await page.waitForFunction(() => window.__done === true, null, { timeout: 240000 });
 const out = await page.evaluate(() => ({
-  platform: window.__platform, install: window.__install,
-  import: window.__import, fatal: window.__fatal, log: window.__log,
+  platform: window.__platform, manifest: window.__manifest,
+  install: window.__install, import: window.__import,
+  fatal: window.__fatal, log: window.__log,
 }));
 console.log("\n===== PROBE RESULT =====");
 console.log(JSON.stringify(out, null, 2));

@@ -62,16 +62,21 @@ CI (`.github/workflows/build-site.yml`) runs the native + browser tests, cross-c
 the webrtcvad wasm wheel, builds the bundle, and deploys `dist/site` to GitHub Pages. The
 ffmpeg core is kept single-threaded so Pages needs no COOP/COEP headers.
 
-## The webrtcvad wasm wheel
+## The wasm wheels (webrtcvad + cchardet)
 
-`make wheels` cross-compiles [py-webrtcvad](https://github.com/wiseman/py-webrtcvad) to a
-Pyodide `wasm32` wheel (see `scripts/build_wheels.sh`) so the browser uses the same default
-VAD as the CLI. It needs network + a POSIX toolchain (emsdk is installed on demand), so it
-normally runs in CI; the built `.whl` lands in `vendor/wheels/` and is served with the site.
-When the wheel is absent, video/audio references are disabled (subtitle references still
-work). Version pins (Pyodide, py-webrtcvad, ffmpeg.wasm) all live in `build.config.json`.
+`make wheels` cross-compiles ffsubsync's C-extension deps to Pyodide `wasm32` wheels (see
+`scripts/build_wheels.sh`) so the browser uses the same native libraries as the CLI:
 
-## Phase 3 (optional)
+- **webrtcvad** — from [py-webrtcvad](https://github.com/wiseman/py-webrtcvad); the same
+  default VAD as the CLI. When absent, video/audio references are disabled (subtitle
+  references still work).
+- **cchardet** — from [faust-cchardet](https://github.com/faust-streaming/cChardet) (a
+  Cython wrapper around the uchardet C++ library, kept in a git submodule). Gives exact
+  CLI-parity encoding detection: `subtitle_parser` prefers `cchardet` over
+  `charset-normalizer`. When absent, `charset-normalizer` (a Pyodide core package) handles
+  detection in-browser, so this wheel is best-effort — a build failure never blocks deploy.
 
-- `make cchardet-wheel` — a `cchardet` (uchardet C++) wasm wheel for exact CLI-parity
-  encoding detection. Not needed: `charset-normalizer` already handles detection in-browser.
+Building needs network + a POSIX toolchain (emsdk is installed on demand) and a Python 3.13
+host, so it normally runs in CI; the built `.whl`s land in `vendor/wheels/` and are served
+with the site. `make webrtcvad-wheel` / `make cchardet-wheel` build just one. Version pins
+(Pyodide, py-webrtcvad, faust-cchardet, ffmpeg.wasm) all live in `build.config.json`.

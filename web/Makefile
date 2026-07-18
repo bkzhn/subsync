@@ -14,10 +14,11 @@ VERSION := $(shell cd "$(REPO_ROOT)" && git describe --tags --always --dirty 2>/
 
 # Deps the native correctness tests need (mirror build.config.json + the
 # transitive libs ffsubsync imports at load time). webrtcvad-wheels is the native
-# stand-in for the browser's wasm webrtcvad wheel.
+# stand-in for the browser's wasm webrtcvad wheel; faust-cchardet is the native
+# stand-in for the browser's wasm cchardet wheel (same lib the CLI prefers).
 TEST_DEPS := --with numpy --with pysubs2 --with srt --with ffmpeg-python \
              --with auditok --with webrtcvad-wheels --with charset-normalizer \
-             --with rich --with tqdm
+             --with faust-cchardet --with rich --with tqdm
 
 .PHONY: help vendor vendor-pypi site serve test test-audio test-browser clean \
         emsdk wheels webrtcvad-wheel cchardet-wheel
@@ -32,7 +33,9 @@ help:
 	@echo "  make test-browser   headless Pyodide sync test (Playwright; needs network)"
 	@echo "  make clean          remove dist/ and generated vendor bundle"
 	@echo "  --- Phase 2 (video/audio) ---"
-	@echo "  make wheels         build webrtcvad (and optional cchardet) Pyodide wasm wheels"
+	@echo "  make wheels         build webrtcvad + cchardet Pyodide wasm wheels"
+	@echo "  make webrtcvad-wheel  build just the webrtcvad wasm wheel"
+	@echo "  make cchardet-wheel   build just the cchardet (faust-cchardet) wasm wheel"
 
 vendor: vendor-pypi
 	$(NODE) scripts/vendor.mjs
@@ -79,16 +82,22 @@ test-browser: site
 clean:
 	rm -rf "$(WEB_DIR)/dist" "$(WEB_DIR)/vendor/py_sources.json"
 
-# --- Phase 2: video/audio reference wasm wheels ------------------------------
-# Build the webrtcvad wasm wheel (exact CLI-parity VAD). Needs network + a POSIX
-# toolchain; intended for CI. The site works without it (auditok fallback).
-wheels webrtcvad-wheel:
-	bash scripts/build_wheels.sh
+# --- Phase 2/3: video/audio + encoding reference wasm wheels ------------------
+# Cross-compile the C-extension deps to Pyodide wasm wheels (exact CLI parity).
+# Needs network + a POSIX toolchain; intended for CI. The site works without them
+# (auditok fallback for VAD, charset-normalizer fallback for encoding detection).
+#
+# `wheels` builds both; cchardet is best-effort so it never blocks the webrtcvad
+# wheel. The single-package targets build just one.
+wheels:
+	bash scripts/build_wheels.sh all
+
+webrtcvad-wheel:
+	bash scripts/build_wheels.sh webrtcvad
+
+cchardet-wheel:
+	bash scripts/build_wheels.sh cchardet
 
 # emsdk setup is handled inside build_wheels.sh (matched to the pinned Pyodide).
 emsdk:
 	@echo "emsdk is installed on demand by 'make wheels' (see scripts/build_wheels.sh)."
-
-cchardet-wheel:
-	@echo "Phase 3 optional target (see the plan's encoding-detection wheel section)."
-	@exit 1

@@ -7,6 +7,7 @@
   "wheelDir": "vendor/wheels/",
   "wheelManifest": "vendor/wheels/manifest.json",
   "pyWebrtcvadRef": "2.0.10",
+  "faustCchardetRef": "v2.1.20",
   "pyodideAbiTag": "pyodide_2025_0_wasm32",
   "ffmpeg": {
     "ffmpegPkg": "@ffmpeg/ffmpeg@0.12.15",

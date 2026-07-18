@@ -2,8 +2,9 @@ name: Build Website
 
 # Builds and deploys the browser/WASM ffsubsync site to GitHub Pages
 # (https://smacke.github.io/ffsubsync). build-wheels cross-compiles the webrtcvad
-# wasm wheel (exact CLI-parity VAD) and feeds it into build-site; if that build
-# fails, the site still deploys and falls back to the pure-Python auditok VAD.
+# (VAD) and cchardet (encoding) wasm wheels for exact CLI parity and feeds them
+# into build-site; if a wheel build fails, the site still deploys and falls back
+# (auditok VAD, charset-normalizer encoding detection).
 #
 # To deploy on demand: Actions -> build-site -> "Run workflow" (workflow_dispatch),
 # targeting master. Pushes to master that touch web/ or ffsubsync/ also deploy.
@@ -43,11 +44,11 @@ jobs:
         with:
           # Pyodide 0.28.x's cross-build env requires a 3.13 host interpreter.
           python-version: "3.13"
-      - name: Build webrtcvad wasm wheel
+      - name: Build wasm wheels (webrtcvad + cchardet)
         run: make -C web wheels
       - uses: actions/upload-artifact@v4
         with:
-          name: webrtcvad-wheel
+          name: wasm-wheels
           path: web/vendor/wheels/*.whl
           if-no-files-found: warn
 
@@ -63,11 +64,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
-      - name: Fetch webrtcvad wheel (for the audio-path test)
+      - name: Fetch wasm wheels (for the audio-path test)
         uses: actions/download-artifact@v4
         continue-on-error: true
         with:
-          name: webrtcvad-wheel
+          name: wasm-wheels
           path: web/vendor/wheels
       - name: Install Playwright
         working-directory: web
@@ -88,11 +89,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
-      - name: Fetch webrtcvad wheel (if built)
+      - name: Fetch wasm wheels (if built)
         uses: actions/download-artifact@v4
         continue-on-error: true
         with:
-          name: webrtcvad-wheel
+          name: wasm-wheels
           path: web/vendor/wheels
       - name: Assemble static bundle
         run: make -C web site
