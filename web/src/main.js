@@ -27,6 +27,12 @@ const VIDEO_ACCEPT = "video/*,audio/*,.mkv,.mp4,.avi,.mov,.webm,.m4v,.mka,.mp3,.
 const V = new URL(import.meta.url).searchParams.get("v") || "";
 const withV = (url) => (V ? url + (url.includes("?") ? "&" : "?") + "v=" + V : url);
 
+// Fire a GA4 custom event (gtag is defined globally in index.html). No-ops if
+// analytics is blocked or not yet loaded, so callers never need to guard.
+const track = (name, params) => {
+  if (typeof window.gtag === "function") window.gtag("event", name, params);
+};
+
 const configUrl = withV(new URL("./build.config.json", document.baseURI).href);
 const worker = new Worker(
   withV(new URL("./src/worker.js", document.baseURI).href),
@@ -74,6 +80,7 @@ for (const radio of document.querySelectorAll('input[name="ref-type"]')) {
   radio.addEventListener("change", onRefTypeChange);
 }
 els.syncBtn.addEventListener("click", onSync);
+els.download.addEventListener("click", () => track("download_subtitles"));
 
 function refType() {
   return document.querySelector('input[name="ref-type"]:checked').value;
@@ -106,6 +113,13 @@ async function onSync() {
     gss: !!els.gss.checked,
     split_sync: !!els.splitSync.checked,
   };
+
+  track("sync_start", {
+    ref_type: refType(),
+    no_fix_framerate: options.no_fix_framerate,
+    gss: options.gss,
+    split_sync: options.split_sync,
+  });
 
   // The input subtitle is always small — read it into memory.
   setStatus("Reading input subtitles…");
@@ -204,6 +218,7 @@ function renderResult(result) {
   els.download.download = result.output_name || "synced.srt";
   els.result.hidden = false;
   setStatus("Done.");
+  track("sync_complete", { ref_type: refType() });
 }
 
 function setStatus(text, isError = false) {
