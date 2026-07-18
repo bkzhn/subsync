@@ -46,9 +46,19 @@ simply packages the same ffsubsync code to run without an install.
 Privacy
 -------
 
-All processing happens locally in your browser tab. The only network traffic is the
-one-time download of the WebAssembly runtime and support libraries; your subtitle
-files are read directly from disk into the page and never transmitted.
+All syncing happens locally in your browser tab; your subtitle and video / audio
+files are read directly from disk into the page and are never uploaded. Two kinds of
+network traffic do occur:
+
+- the one-time download of the WebAssembly runtime and support libraries; and
+- anonymous, aggregate `Google Analytics <https://www.googletagmanager.com>`_ usage
+  events — that a sync was started or completed, that the output was downloaded,
+  whether the reference was a subtitle or a video / audio file, and which options
+  (``--gss``, ``--no-fix-framerate``, ``--split-penalty``) were toggled — so the
+  maintainer can see how often each feature is used.
+
+**Filenames, file contents, and file sizes are never sent over the network.** The
+command-line tool makes no analytics calls at all.
 
 For developers
 --------------

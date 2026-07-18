@@ -222,6 +222,17 @@ If the sync fails, the following recourses are available:
 - Try a value of `--max-offset-seconds` greater than the default of 60, in the
   event that the subtitles are out of sync by more than 60 seconds (empirically
   unlikely in practice, but possible).
+- If the subtitles start in sync but drift partway through — a commercial break
+  was cut out, a scene was inserted or removed (a "director's cut"), or two discs
+  were concatenated into one file — no single global offset can fix both sides.
+  Try `--split-penalty`, which enables an
+  [alass](https://github.com/kaegi/alass)-style piecewise alignment that lets the
+  offset change across the timeline, introducing a break only where it genuinely
+  improves alignment. Pass the flag with no value for a reasonable default, or a
+  number (seconds of overlap; ~4–20 are typical) to set the cost of each split —
+  lower splits more eagerly, higher stays closer to a single offset. See the
+  [advanced options docs](https://ffsubsync.readthedocs.io/en/latest/advanced.html#mid-file-breaks-piecewise-sync)
+  for the full story.
 - Try `--vad=auditok` since [auditok](https://github.com/amsehili/auditok) can
   sometimes work better in the case of low-quality audio than WebRTC's VAD.
   Auditok does not specifically detect voice, but instead detects all audio;
@@ -295,16 +306,20 @@ In most cases, inconsistencies between video and subtitles occur when starting
 or ending segments present in video are not present in subtitles, or vice versa.
 This can occur, for example, when a TV episode recap in the subtitles was pruned
 from video. FFsubsync typically works well in these cases, and in my experience
-this covers >95% of use cases. Handling breaks and splits outside of the beginning
-and ending segments is left to future work (see below).
+this covers >95% of use cases. Breaks and splits *outside* the beginning and
+ending segments — a commercial break cut out of the middle, an inserted or removed
+scene, or two discs concatenated into one file — are trickier, since no single
+global offset can fix both sides. The experimental `--split-penalty` mode handles
+many of these; see [Sync Issues](#sync-issues) above.
 
 Future Work
 -----------
-Besides general stability and usability improvements, one line
-of work aims to extend the synchronization algorithm to handle splits
-/ breaks in the middle of video not present in subtitles (or vice versa).
-Developing a robust solution will take some time (assuming one is possible).
-See [#10](https://github.com/smacke/ffsubsync/issues/10) for more details.
+Besides general stability and usability improvements, one line of work aims to
+harden the [alass](https://github.com/kaegi/alass)-style `--split-penalty` mode
+that handles splits / breaks in the middle of video not present in subtitles (or
+vice versa). It works well in many cases today but is still considered
+experimental. See [#10](https://github.com/smacke/ffsubsync/issues/10) for more
+details.
 
 History
 -------
