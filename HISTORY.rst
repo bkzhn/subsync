@@ -1,6 +1,11 @@
 History
 =======
 
+0.5.1 (2026-07-23)
+------------------
+* Make faust-cchardet a required dependency now that it works on Python 3.13+;
+* Add wasm-powered website at https://smacke.net/ffsubsync/;
+
 0.5.0 (2026-06-16)
 ------------------
 * Auto-detect input subtitles from the reference's name when ``-i`` is omitted, syncing each to a ``<name>.synced.srt`` (or in place with ``--overwrite-input``);
